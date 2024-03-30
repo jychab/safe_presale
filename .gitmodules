@@ -1,0 +1,6 @@
+[submodule "deps/mpl-token-metadata"]
+	path = deps/mpl-token-metadata
+	url = https://github.com/metaplex-foundation/mpl-token-metadata.git
+[submodule "deps/raydium-contract-instructions"]
+	path = deps/raydium-contract-instructions
+	url = https://github.com/raydium-io/raydium-contract-instructions.git
