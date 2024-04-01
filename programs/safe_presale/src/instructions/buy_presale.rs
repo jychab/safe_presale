@@ -23,6 +23,7 @@ pub struct BuyPresaleCtx<'info> {
     #[account(
         mut,
         constraint = pool.allow_purchase @CustomError::PresaleHasEnded,
+        constraint = pool.authority == pool_authority.key()
     )]
     pub pool: Box<Account<'info, Pool>>,
 
@@ -54,6 +55,10 @@ pub struct BuyPresaleCtx<'info> {
 
     #[account(mut)]
     pub payer: Signer<'info>,
+
+    /// CHECK: Depositing sol to pool creator
+    #[account(mut)]
+    pub pool_authority: AccountInfo<'info>,
 
     pub system_program: Program<'info, System>,
 
@@ -107,16 +112,37 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
                 }
             }
         }
-
         if !allowed {
             return Err(error!(CustomError::MintNotAllowedInPool));
         }
     }
-    msg!("Adding liquidity to the pool");
+
+    let creator_fees = amount
+        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
+        .ok_or(CustomError::IntegerOverflow)?
+        .checked_div(10000)
+        .ok_or(CustomError::IntegerOverflow)?;
+
+    msg!("Transferring creator fees");
+    transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.payer.to_account_info(),
+                to: ctx.accounts.pool_authority.to_account_info(),
+            },
+        ),
+        creator_fees,
+    )?;
+
+    let amount_after_creator_fees = amount
+        .checked_sub(creator_fees)
+        .ok_or(CustomError::IntegerOverflow)?;
     pool.liquidity_collected = pool
         .liquidity_collected
-        .checked_add(amount)
+        .checked_add(amount_after_creator_fees)
         .ok_or(CustomError::IntegerOverflow)?;
+    msg!("Adding liquidity to the pool");
     transfer(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -125,7 +151,7 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
                 to: ctx.accounts.pool_wsol_token_account.to_account_info(),
             },
         ),
-        amount,
+        amount_after_creator_fees,
     )?;
     sync_native(CpiContext::new(
         ctx.accounts.token_program.to_account_info(),

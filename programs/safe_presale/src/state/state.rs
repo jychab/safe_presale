@@ -27,10 +27,12 @@ pub struct Pool {
     pub requires_collections: Vec<Pubkey>,
     pub mint: Pubkey,
     pub lp_mint: Option<Pubkey>,
+    pub lp_mint_supply: u64,
     pub liquidity_collected: u64,
+    pub creator_fee_basis_points: u16,
     pub vested_supply: u64,
     pub total_supply: u64,
-    pub vesting_period: i64,
+    pub vesting_period: u64,
     pub vesting_started_at: Option<i64>,
     pub vesting_period_end: Option<i64>,
 }

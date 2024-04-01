@@ -89,7 +89,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     pool.vesting_started_at = Some(current_time);
     pool.vesting_period_end = Some(
         current_time
-            .checked_add(pool.vesting_period)
+            .checked_add(pool.vesting_period.try_into().unwrap())
             .ok_or(CustomError::IntegerOverflow)?,
     );
     pool.lp_mint = Some(ctx.accounts.amm_lp_mint.key());
@@ -115,8 +115,9 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     let associated_token_program = ctx.accounts.associated_token_program.as_ref();
     let token_program = ctx.accounts.token_program.as_ref();
     let remaining_accounts = ctx.remaining_accounts.as_ref();
-    let amount_coin_in_pool = pool_token_coin.amount;
-    let amount_pc_in_pool = pool_token_pc.amount;
+    let amount_coin_in_pool = pool.total_supply.checked_sub(pool.vested_supply).unwrap();
+    let amount_pc_in_pool = pool.liquidity_collected;
+
     msg!(
         "Transfering {} mint from pool to payer",
         amount_coin_in_pool
@@ -187,6 +188,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         .unwrap();
 
     msg!("Transfering {} lp token from payer to pool", user_lp_amount);
+    pool.lp_mint_supply = user_lp_amount;
     transfer_lp_token(
         user_wallet.to_account_info(),
         associated_token_program.to_account_info(),

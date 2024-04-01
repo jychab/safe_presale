@@ -14,7 +14,7 @@ use std::cmp::min;
 pub struct ClaimRewardsCtx<'info> {
     #[account(
         mut,
-        constraint = purchase_receipt.original_mint == nft.key()@ CustomError::MintNotAllowedToClaim
+        constraint = purchase_receipt.original_mint == nft.key()@ CustomError::MintNotAllowed
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
@@ -27,7 +27,7 @@ pub struct ClaimRewardsCtx<'info> {
     #[account(
         constraint = nft_owner_nft_token_account.amount == 1,
         constraint = nft_owner_nft_token_account.mint == nft.key(),
-        constraint = nft_owner_reward_mint_token_account.owner == nft_owner.key()
+        constraint = nft_owner_nft_token_account.owner == nft_owner.key()
     )]
     pub nft_owner_nft_token_account:  Box<Account<'info, TokenAccount>>,
 
@@ -72,7 +72,7 @@ pub fn handler(
     let vested_supply = pool.vested_supply;
 
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
-    let amount_purchased = purchase_receipt.amount;
+    
 
     if let Some(last_claimed_at) = purchase_receipt.last_claimed_at {
         if last_claimed_at > vesting_period_end {
@@ -80,30 +80,32 @@ pub fn handler(
         }
     }else{
         //First time claiming 
-        let mint_elligible = match amount_purchased.checked_div(liquidity_collected) {
-            Some(result) => result.checked_mul(vested_supply),
+        let creator_fees = purchase_receipt.amount
+            .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
+            .ok_or(CustomError::IntegerOverflow)?
+            .checked_div(10000)
+            .ok_or(CustomError::IntegerOverflow)?;
+        let amount_after_creator_fees = purchase_receipt.amount.checked_sub(creator_fees).ok_or(CustomError::IntegerOverflow)?;
+        let mint_elligible = match amount_after_creator_fees.checked_mul(vested_supply) {
+            Some(result) => result.checked_div(liquidity_collected).ok_or(CustomError::IntegerOverflow)?,
             None => return Err(error!(CustomError::IntegerOverflow)),
         };
-        purchase_receipt.mint_elligible = mint_elligible;
+        purchase_receipt.mint_elligible = Some(mint_elligible);
     }
 
     let current_time = Clock::get()?.unix_timestamp;
     //update last_claimed_at
     purchase_receipt.last_claimed_at =  Some(current_time);
 
-    let mint_elligible_to_claim = match purchase_receipt.mint_elligible {
-        Some(mint_elligible) => Calculator::to_i64(mint_elligible).unwrap(),
-        None => return Err(error!(CustomError::ConversionFailure)),
-    };
+    let mint_elligible_to_claim = purchase_receipt.mint_elligible.unwrap();
 
     // all using unix_timestamp
-    let duration_since_last_claimed = min(current_time, vesting_period_end)
-    .checked_sub(purchase_receipt.last_claimed_at.unwrap_or(vesting_started_at)).ok_or(CustomError::IntegerOverflow)?;
-    let time_spent_compared_to_vesting_period = duration_since_last_claimed.checked_div(vesting_period).ok_or(CustomError::IntegerOverflow)?;
-    let mint_claimable = match time_spent_compared_to_vesting_period.checked_mul(mint_elligible_to_claim) {
-        Some(result) => Calculator::to_u64_from_i64(result).unwrap(),
-        None => return Err(error!(CustomError::IntegerOverflow)),
-    };
+    let duration_since_last_claimed = Calculator::to_u64_from_i64(min(current_time, vesting_period_end).checked_sub(purchase_receipt.last_claimed_at.unwrap_or(vesting_started_at)).ok_or(CustomError::IntegerOverflow)?)?;
+    let mint_claimable = duration_since_last_claimed
+            .checked_mul(mint_elligible_to_claim)
+            .ok_or(CustomError::IntegerOverflow)?
+            .checked_div(vesting_period)
+            .ok_or(CustomError::IntegerOverflow)?;
 
     //update mint_claimed
     purchase_receipt.mint_claimed = purchase_receipt.mint_claimed.checked_add(mint_claimable).ok_or(CustomError::IntegerOverflow)?;

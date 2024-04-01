@@ -15,9 +15,7 @@ impl Calculator {
         val.try_into().map_err(|_| CustomError::ConversionFailure)
     }
     pub fn to_u64_from_i64(val: i64) -> Result<u64, CustomError> {
-        val.try_into().map_err(|_| CustomError::ConversionFailure)
-    }
-    pub fn to_i64(val: u64) -> Result<i64, CustomError> {
-        val.try_into().map_err(|_| CustomError::ConversionFailure)
+        val.try_into()
+            .map_err(|_| CustomError::InvalidNegativeValue)
     }
 }

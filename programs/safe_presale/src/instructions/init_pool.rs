@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
 
-use crate::state::{Identifier, Pool, POOL_PREFIX, POOL_SIZE};
+use crate::{error::CustomError, state::{Identifier, Pool, POOL_PREFIX, POOL_SIZE}};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitPoolArgs {
@@ -10,9 +10,10 @@ pub struct InitPoolArgs {
     pub symbol: String,
     pub uri: String,
     pub decimals: u8,
-    pub vesting_period: i64,
+    pub vesting_period: u64,
     pub vested_supply: u64,
     pub total_supply: u64,
+    pub creator_fee_basis_points: u16, 
     pub requires_collections: Vec<Pubkey>,
 }
 
@@ -77,9 +78,19 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.mint = ctx.accounts.reward_mint.key();
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
+
+    
+    if args.vested_supply > args.total_supply {
+        return Err(error!(CustomError::VestingSupplyLargerThanTotalSupply))
+    }
+    if args.creator_fee_basis_points > 10000 {
+        return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
+    }
+
     pool.total_supply = args.total_supply;
     pool.vested_supply = args.vested_supply;
     pool.vesting_period = args.vesting_period;
+    pool.creator_fee_basis_points = args.creator_fee_basis_points;
 
     msg!("Creating Pool seeds");
     let pool_identifier = pool.identifier.to_le_bytes();

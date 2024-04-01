@@ -26,11 +26,8 @@ pub mod safe_presale {
     pub fn init_pool(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         instructions::init_pool::handler(ctx, args)
     }
-    pub fn withdraw_lp_token<'info>(
-        ctx: Context<WithdrawPoolLpToken<'info>>,
-        amount: u64,
-    ) -> Result<()> {
-        instructions::withdraw_lp_token::handler(ctx, amount)
+    pub fn withdraw_lp_token<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
+        instructions::withdraw_lp_token::handler(ctx)
     }
     pub fn launch_token_amm<'a, 'b, 'c: 'info, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, LaunchTokenAmmCtx<'info>>,

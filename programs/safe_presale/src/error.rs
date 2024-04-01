@@ -14,14 +14,16 @@ pub enum CustomError {
     ConversionFailure,
     #[msg("Integer Overflow Error")]
     IntegerOverflow,
+    #[msg("Number cannot be negative")]
+    InvalidNegativeValue,
     #[msg("Mint not allowed in this pool")]
     MintNotAllowedInPool,
     #[msg("Mint metadata is owned by the incorrect program")]
     InvalidMintMetadataOwner,
     #[msg("Invalid mint metadata")]
     InvalidMintMetadata,
-    #[msg("Mint not allowed to claim")]
-    MintNotAllowedToClaim,
+    #[msg("Invalid Mint")]
+    MintNotAllowed,
     #[msg("Invalid pool to claim")]
     InvalidPool,
     #[msg("Invalid reward mint")]
@@ -30,4 +32,8 @@ pub enum CustomError {
     MaximumAmountClaimed,
     #[msg("Vesting Period has not ended")]
     VestingStillInProgress,
+    #[msg("Vesting Supply larget than total supply")]
+    VestingSupplyLargerThanTotalSupply,
+    #[msg("Creator Fees basis points exceed 10000")]
+    CreatorBasisPointsExceedMaximumAmount,
 }

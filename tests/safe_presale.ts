@@ -244,6 +244,7 @@ describe("Safe Presale", () => {
           decimals: rewardMint.decimal,
           uri: rewardMint.uri,
           requiresCollections: [collection.mintAddress],
+          creatorFeeBasisPoints: 500,
           vestingPeriod: vestingPeriod,
           vestedSupply: vestedSupply,
           totalSupply: totalSupply,
@@ -322,6 +323,7 @@ describe("Safe Presale", () => {
           pool: poolId,
           nft: nftA.mintAddress,
           nftMetadata: nftA.metadataAddress,
+          poolAuthority: signer.publicKey,
           payer: signer.publicKey,
           systemProgram: SystemProgram.programId,
         })
@@ -347,7 +349,7 @@ describe("Safe Presale", () => {
     );
     const pool = await program.account.pool.fetch(poolId);
     assert(
-      pool.liquidityCollected.toString() === amount.toString(),
+      pool.liquidityCollected.toNumber() === (amount.toNumber() * 9500) / 10000,
       "Pool Liquidity not equal"
     );
     const poolWsolAmount = await getAccount(
@@ -355,7 +357,7 @@ describe("Safe Presale", () => {
       poolAndWSOLATA
     );
     assert(
-      poolWsolAmount.amount.toString() === amount.toString(),
+      Number(poolWsolAmount.amount) === (amount.toNumber() * 9500) / 10000,
       "WSOL amount not equal"
     );
   });
@@ -392,6 +394,7 @@ describe("Safe Presale", () => {
           pool: poolId,
           nft: nftA.mintAddress,
           nftMetadata: nftA.metadataAddress,
+          poolAuthority: signer.publicKey,
           payer: randomPayer.publicKey,
           systemProgram: SystemProgram.programId,
         })
