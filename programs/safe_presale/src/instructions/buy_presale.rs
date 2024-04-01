@@ -12,10 +12,10 @@ use mpl_token_metadata::{self, accounts::Metadata};
 #[derive(Accounts)]
 pub struct BuyPresaleCtx<'info> {
     #[account(
-        init,
+        init_if_needed,
         payer = payer,
         space = PURCHASE_RECEIPT_SIZE,
-        seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), pool.key().as_ref(), original_mint.key().as_ref()],
+        seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), pool.key().as_ref(), nft.key().as_ref()],
         bump,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
@@ -39,15 +39,18 @@ pub struct BuyPresaleCtx<'info> {
     )]
     pub wsol_mint: Box<Account<'info, Mint>>,
 
-    pub original_mint: Box<Account<'info, Mint>>,
+    #[account(
+        constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
+    )]
+    pub nft: Box<Account<'info, Mint>>,
 
     #[account(
-        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), original_mint.key().as_ref()],
+        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
         bump,
         seeds::program = mpl_token_metadata::ID
     )]
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub original_mint_metadata: AccountInfo<'info>,
+    pub nft_metadata: AccountInfo<'info>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -63,41 +66,42 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
     msg!("Initializing purchase receipt");
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool = &mut ctx.accounts.pool;
-    purchase_receipt.bump = ctx.bumps.purchase_receipt;
-    purchase_receipt.pool = pool.key();
-    purchase_receipt.original_mint = ctx.accounts.original_mint.key();
-    purchase_receipt.amount = amount;
-    purchase_receipt.mint_claimed = 0;
+
+    if !purchase_receipt.is_initialized {
+        purchase_receipt.bump = ctx.bumps.purchase_receipt;
+        purchase_receipt.pool = pool.key();
+        purchase_receipt.original_mint = ctx.accounts.nft.key();
+        purchase_receipt.amount = amount;
+        purchase_receipt.mint_claimed = 0;
+        purchase_receipt.is_initialized = true;
+    } else {
+        purchase_receipt.amount = purchase_receipt
+            .amount
+            .checked_add(amount)
+            .ok_or(CustomError::IntegerOverflow)?;
+    }
 
     msg!("Checking allowlist");
     if !pool.requires_collections.is_empty() {
         let mut allowed = false;
 
-        if !ctx.accounts.original_mint_metadata.data_is_empty() {
+        if !ctx.accounts.nft_metadata.data_is_empty() {
             let mint_metadata_data = ctx
                 .accounts
-                .original_mint_metadata
+                .nft_metadata
                 .try_borrow_mut_data()
                 .expect("Failed to borrow data");
-            if ctx
-                .accounts
-                .original_mint_metadata
-                .to_account_info()
-                .owner
-                .key()
-                != mpl_token_metadata::ID
-            {
+            if ctx.accounts.nft_metadata.to_account_info().owner.key() != mpl_token_metadata::ID {
                 return Err(error!(CustomError::InvalidMintMetadataOwner));
             }
-            let original_mint_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
+            let nft_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
                 .expect("Failed to deserialize metadata");
-            if original_mint_metadata.mint != ctx.accounts.original_mint.key() {
+            if nft_metadata.mint != ctx.accounts.nft.key() {
                 return Err(error!(CustomError::InvalidMintMetadata));
             }
 
-            if !pool.requires_collections.is_empty() && original_mint_metadata.collection.is_some()
-            {
-                let collection = original_mint_metadata.collection.unwrap();
+            if !pool.requires_collections.is_empty() && nft_metadata.collection.is_some() {
+                let collection = nft_metadata.collection.unwrap();
                 if collection.verified && pool.requires_collections.contains(&collection.key) {
                     allowed = true
                 }

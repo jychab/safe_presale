@@ -2,6 +2,8 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum CustomError {
+    #[msg("Nft is not non-fungible")]
+    NftIsNotNonFungible,
     #[msg("Unable to claim as presale is still ongoing!")]
     PresaleIsStillOngoing,
     #[msg("Presale has ended!")]

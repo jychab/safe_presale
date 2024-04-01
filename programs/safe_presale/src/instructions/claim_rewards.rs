@@ -14,45 +14,51 @@ use std::cmp::min;
 pub struct ClaimRewardsCtx<'info> {
     #[account(
         mut,
-        constraint = purchase_receipt.original_mint == original_mint.key()@ CustomError::MintNotAllowedToClaim
+        constraint = purchase_receipt.original_mint == nft.key()@ CustomError::MintNotAllowedToClaim
     )]
-    purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
+    pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
     #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
         constraint = !pool.allow_purchase @CustomError::PresaleIsStillOngoing
     )]
-    pool: Box<Account<'info, Pool>>,
-
-    original_mint: Box<Account<'info, Mint>>,
+    pub pool: Box<Account<'info, Pool>>,
 
     #[account(
-        constraint = payer_original_mint_ata.amount > 0,
-        constraint = payer_original_mint_ata.mint == original_mint.key(),
-        constraint = payer_original_mint_ata.owner == payer.key(),
+        constraint = nft_owner_nft_token_account.amount == 1,
+        constraint = nft_owner_nft_token_account.mint == nft.key(),
+        constraint = nft_owner_reward_mint_token_account.owner == nft_owner.key()
     )]
-    payer_original_mint_ata:  Box<Account<'info, TokenAccount>>,
-
-    #[account(
-        mut, 
-        constraint = reward_mint.key() == pool.mint @ CustomError::InvalidRewardMint
-    )]
-    reward_mint: Box<Account<'info, Mint>>,
+    pub nft_owner_nft_token_account:  Box<Account<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
         payer = payer,
         associated_token::mint = reward_mint,
-        associated_token::authority = payer,
+        associated_token::authority = nft_owner,
     )]
-    payer_reward_mint_token_account: Box<Account<'info, TokenAccount>>,
+    pub nft_owner_reward_mint_token_account: Box<Account<'info, TokenAccount>>,
+
+    ///CHECK: Contraint is checked by other accounts
+    pub nft_owner: AccountInfo<'info>,
+
+    #[account(
+        constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
+    )]
+    pub nft: Box<Account<'info, Mint>>,
+
+    #[account(
+        mut, 
+        constraint = reward_mint.key() == pool.mint @ CustomError::InvalidRewardMint
+    )]
+    pub reward_mint: Box<Account<'info, Mint>>,
 
     #[account(mut)]
-    payer: Signer<'info>,
+    pub payer: Signer<'info>,
 
-    associated_token_program: Program<'info, AssociatedToken>,
-    token_program: Program<'info, Token>,
-    system_program: Program<'info, System>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub token_program: Program<'info, Token>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(
@@ -116,7 +122,7 @@ pub fn handler(
                 mint: ctx.accounts.reward_mint.to_account_info(),
                 to: ctx
                     .accounts
-                    .payer_reward_mint_token_account
+                    .nft_owner_reward_mint_token_account
                     .to_account_info(),
                 authority: pool.to_account_info(),
             }

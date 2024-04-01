@@ -320,8 +320,8 @@ describe("Safe Presale", () => {
           poolWsolTokenAccount: poolAndWSOLATA,
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
-          originalMint: nftA.mintAddress,
-          originalMintMetadata: nftA.metadataAddress,
+          nft: nftA.mintAddress,
+          nftMetadata: nftA.metadataAddress,
           payer: signer.publicKey,
           systemProgram: SystemProgram.programId,
         })
@@ -381,7 +381,6 @@ describe("Safe Presale", () => {
       [toWeb3JsKeypair(signer)]
     );
     const amount = new BN(0.1 * LAMPORTS_PER_SOL);
-    let error = false;
     try {
       await program.methods
         .buyPresale(amount)
@@ -391,18 +390,23 @@ describe("Safe Presale", () => {
           poolWsolTokenAccount: poolAndWSOLATA,
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
-          originalMint: nftA.mintAddress,
-          originalMintMetadata: nftA.metadataAddress,
+          nft: nftA.mintAddress,
+          nftMetadata: nftA.metadataAddress,
           payer: randomPayer.publicKey,
           systemProgram: SystemProgram.programId,
         })
         .signers([randomPayer])
         .rpc();
     } catch (e) {
-      error = true;
       console.log(e);
     }
-    assert(error, "Transaction should have failed");
+    const receipt = await program.account.purchaseReceipt.fetch(
+      purchaseReceipt
+    );
+    assert(
+      receipt.amount.toNumber() === amount.toNumber() * 2,
+      "Amount is not equal"
+    );
   });
 
   step("Create Market for AMM", async () => {
@@ -609,10 +613,11 @@ describe("Safe Presale", () => {
         .accounts({
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
-          originalMint: nftA.mintAddress,
-          payerOriginalMintAta: payerOriginalMintAta,
+          nft: nftA.mintAddress,
+          nftOwner: signer.publicKey,
+          nftOwnerNftTokenAccount: payerOriginalMintAta,
           rewardMint: rewardMint.mint,
-          payerRewardMintTokenAccount: payerRewardMintTokenAccount,
+          nftOwnerRewardMintTokenAccount: payerRewardMintTokenAccount,
           payer: signer.publicKey,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,

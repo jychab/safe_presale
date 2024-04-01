@@ -1,4 +1,4 @@
-use anchor_lang::prelude::*;
+use anchor_lang::{prelude::*, solana_program::program_pack::IsInitialized};
 
 pub mod public_keys {
     pub mod amm_v4_mainnet {
@@ -47,6 +47,7 @@ pub const IDENTIFIER_SIZE: usize = 8 + std::mem::size_of::<Identifier>() + 8;
 
 #[account]
 pub struct PurchaseReceipt {
+    pub is_initialized: bool,
     pub bump: u8,
     pub pool: Pubkey,
     pub amount: u64,
@@ -54,6 +55,12 @@ pub struct PurchaseReceipt {
     pub mint_claimed: u64,
     pub mint_elligible: Option<u64>,
     pub last_claimed_at: Option<i64>,
+}
+
+impl IsInitialized for PurchaseReceipt {
+    fn is_initialized(&self) -> bool {
+        self.is_initialized
+    }
 }
 
 pub const PURCHASE_RECEIPT_PREFIX: &str = "receipt";
