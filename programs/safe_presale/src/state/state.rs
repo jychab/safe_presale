@@ -26,6 +26,7 @@ pub struct Pool {
     pub authority: Pubkey,
     pub requires_collections: Vec<Pubkey>,
     pub mint: Pubkey,
+    pub lp_mint: Option<Pubkey>,
     pub liquidity_collected: u64,
     pub vested_supply: u64,
     pub total_supply: u64,

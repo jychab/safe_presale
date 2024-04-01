@@ -92,6 +92,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
             .checked_add(pool.vesting_period)
             .ok_or(CustomError::IntegerOverflow)?,
     );
+    pool.lp_mint = Some(ctx.accounts.amm_lp_mint.key());
 
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
@@ -212,8 +213,6 @@ fn transfer_lp_token<'info>(
     pool_token_lp: AccountInfo<'info>,
     amount: u64,
 ) -> Result<()> {
-    //deserialize user_token_lp because it has been created by cpi
-
     associated_token::create(CpiContext::new(
         associated_token_program.to_account_info(),
         Create {

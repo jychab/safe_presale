@@ -4,7 +4,7 @@ use anchor_lang::prelude::*;
 pub enum CustomError {
     #[msg("Nft is not non-fungible")]
     NftIsNotNonFungible,
-    #[msg("Unable to claim as presale is still ongoing!")]
+    #[msg("Unable to claim as presale is still ongoing")]
     PresaleIsStillOngoing,
     #[msg("Presale has ended!")]
     PresaleHasEnded,
@@ -28,4 +28,6 @@ pub enum CustomError {
     InvalidRewardMint,
     #[msg("Nothing left to claim")]
     MaximumAmountClaimed,
+    #[msg("Vesting Period has not ended")]
+    VestingStillInProgress,
 }

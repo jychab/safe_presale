@@ -108,9 +108,8 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         pool.total_supply - pool.vested_supply
     )?;
 
-
     msg!("Creating metadata");
-    let _ = CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
+    CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
     .system_program(&ctx.accounts.system_program.to_account_info())
     .mint(&ctx.accounts.reward_mint.to_account_info())
     .mint_authority(&pool.to_account_info())
@@ -126,7 +125,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         creators: None,
         collection: None,
         uses: None,
-    }).invoke_signed(signer);
+    }).invoke_signed(signer)?;
 
     identifier.count += 1;
     Ok(())

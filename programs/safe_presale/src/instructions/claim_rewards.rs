@@ -74,7 +74,6 @@ pub fn handler(
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let amount_purchased = purchase_receipt.amount;
 
-    let current_time = Clock::get()?.unix_timestamp;
     if let Some(last_claimed_at) = purchase_receipt.last_claimed_at {
         if last_claimed_at > vesting_period_end {
             return Err(error!(CustomError::MaximumAmountClaimed));
@@ -87,6 +86,8 @@ pub fn handler(
         };
         purchase_receipt.mint_elligible = mint_elligible;
     }
+
+    let current_time = Clock::get()?.unix_timestamp;
     //update last_claimed_at
     purchase_receipt.last_claimed_at =  Some(current_time);
 
