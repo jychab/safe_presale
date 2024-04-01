@@ -280,9 +280,18 @@ describe("Safe Presale", () => {
         data.mint.toBase58() === rewardMint.mint.toBase58(),
         "Wrong reward mint"
       );
-      assert(data.totalSupply === totalSupply, "Wrong total supply");
-      assert(data.vestedSupply === vestedSupply, "Wrong vested supply");
-      assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
+      assert(
+        data.totalSupply.toNumber() === totalSupply.toNumber(),
+        "Wrong total supply"
+      );
+      assert(
+        data.vestedSupply.toNumber() === vestedSupply.toNumber(),
+        "Wrong vested supply"
+      );
+      assert(
+        data.vestingPeriod.toNumber() === vestingPeriod.toNumber(),
+        "Wrong vesting period"
+      );
       assert(data.vestingStartedAt === null, "Vesting should not have started");
       assert(data.vestingPeriodEnd === null, "Vesting should not have ended");
     } catch (e) {
