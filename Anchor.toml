@@ -3,13 +3,13 @@ seeds = false
 skip-lint = false
 
 [programs.mainnet]
-safe_presale = "6DvsdPa3nXFjFG8ENuABoWeRjQaHUks2pKKqGD9ihekw"
+safe_presale = "9jqqZaNVmt9w4umoa7AajntuQiQPhfD5SMKMEpyk3R3Z"
 
 [programs.localnet]
-safe_presale = "6DvsdPa3nXFjFG8ENuABoWeRjQaHUks2pKKqGD9ihekw"
+safe_presale = "9jqqZaNVmt9w4umoa7AajntuQiQPhfD5SMKMEpyk3R3Z"
 
 [programs.devnet]
-safe_presale = "6DvsdPa3nXFjFG8ENuABoWeRjQaHUks2pKKqGD9ihekw"
+safe_presale = "9jqqZaNVmt9w4umoa7AajntuQiQPhfD5SMKMEpyk3R3Z"
 
 [registry]
 url = "https://api.apr.dev"

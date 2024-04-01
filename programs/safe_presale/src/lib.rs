@@ -1,10 +1,11 @@
 use anchor_lang::prelude::*;
 
-declare_id!("6DvsdPa3nXFjFG8ENuABoWeRjQaHUks2pKKqGD9ihekw");
+declare_id!("9jqqZaNVmt9w4umoa7AajntuQiQPhfD5SMKMEpyk3R3Z");
 
 pub mod error;
 pub mod instructions;
 pub mod state;
+pub mod utils;
 
 pub use instructions::*;
 
@@ -25,25 +26,11 @@ pub mod safe_presale {
     pub fn init_pool(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         instructions::init_pool::handler(ctx, args)
     }
-    pub fn launch_token_clmm<'a, 'b, 'c: 'info, 'info>(
-        ctx: Context<'a, 'b, 'c, 'info, LaunchTokenClmmCtx<'info>>,
-        liquidity: u128,
-        amount_0_max: u64,
-        amount_1_max: u64,
-        tick_lower_index: i32,
-        tick_upper_index: i32,
-        tick_array_lower_start_index: i32,
-        tick_array_upper_start_index: i32,
+    pub fn launch_token_amm<'a, 'b, 'c: 'info, 'info>(
+        ctx: Context<'a, 'b, 'c, 'info, LaunchTokenAmmCtx<'info>>,
+        nonce: u8,
+        open_time: u64,
     ) -> Result<()> {
-        instructions::launch_token_clmm::handler(
-            ctx,
-            liquidity,
-            amount_0_max,
-            amount_1_max,
-            tick_lower_index,
-            tick_upper_index,
-            tick_array_lower_start_index,
-            tick_array_upper_start_index,
-        )
+        instructions::launch_token_amm::handler(ctx, nonce, open_time)
     }
 }

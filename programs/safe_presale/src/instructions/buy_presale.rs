@@ -20,7 +20,10 @@ pub struct BuyPresaleCtx<'info> {
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
-    #[account(mut)]
+    #[account(
+        mut,
+        constraint = pool.allow_purchase @CustomError::PresaleHasEnded,
+    )]
     pub pool: Box<Account<'info, Pool>>,
 
     #[account(
@@ -31,6 +34,9 @@ pub struct BuyPresaleCtx<'info> {
     )]
     pub pool_wsol_token_account: Box<Account<'info, TokenAccount>>,
 
+    #[account(
+        address = public_keys::wsol::id()
+    )]
     pub wsol_mint: Box<Account<'info, Mint>>,
 
     pub original_mint: Box<Account<'info, Mint>>,
@@ -54,18 +60,17 @@ pub struct BuyPresaleCtx<'info> {
 }
 
 pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
+    msg!("Initializing purchase receipt");
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool = &mut ctx.accounts.pool;
     purchase_receipt.bump = ctx.bumps.purchase_receipt;
     purchase_receipt.pool = pool.key();
     purchase_receipt.original_mint = ctx.accounts.original_mint.key();
     purchase_receipt.amount = amount;
-    purchase_receipt.vesting_started_at = Clock::get().unwrap().unix_timestamp;
+    purchase_receipt.mint_claimed = 0;
 
-    // check allowlist
-    if pool.is_closed {
-        return Err(error!(CustomError::MintNotAllowedInPool));
-    } else if !pool.requires_collections.is_empty() {
+    msg!("Checking allowlist");
+    if !pool.requires_collections.is_empty() {
         let mut allowed = false;
 
         if !ctx.accounts.original_mint_metadata.data_is_empty() {
@@ -103,34 +108,25 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
             return Err(error!(CustomError::MintNotAllowedInPool));
         }
     }
-    //add liquidity to the pool
-    pool.liquidity_collected = pool.liquidity_collected.checked_add(amount).unwrap();
-
-    //transfer lamports to WSOL ata account
+    msg!("Adding liquidity to the pool");
+    pool.liquidity_collected = pool
+        .liquidity_collected
+        .checked_add(amount)
+        .ok_or(CustomError::IntegerOverflow)?;
     transfer(
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info().clone(),
+            ctx.accounts.token_program.to_account_info(),
             Transfer {
-                from: ctx.accounts.payer.to_account_info().clone(),
-                to: ctx
-                    .accounts
-                    .pool_wsol_token_account
-                    .to_account_info()
-                    .clone(),
+                from: ctx.accounts.payer.to_account_info(),
+                to: ctx.accounts.pool_wsol_token_account.to_account_info(),
             },
         ),
         amount,
     )?;
-
-    //convert sol to wSOL
     sync_native(CpiContext::new(
-        ctx.accounts.token_program.to_account_info().clone(),
+        ctx.accounts.token_program.to_account_info(),
         SyncNative {
-            account: ctx
-                .accounts
-                .pool_wsol_token_account
-                .to_account_info()
-                .clone(),
+            account: ctx.accounts.pool_wsol_token_account.to_account_info(),
         },
     ))?;
 
