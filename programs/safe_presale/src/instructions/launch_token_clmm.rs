@@ -75,7 +75,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     tick_array_upper_start_index: i32,
 ) -> Result<()> {
     let pool = &mut ctx.accounts.pool;
-    pool.is_closed = true;
+    pool.allow_purchase = true;
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),

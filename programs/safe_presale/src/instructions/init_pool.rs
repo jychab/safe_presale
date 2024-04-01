@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
 
-use crate::state::{Identifier, Pool, MINT_TOKEN_PREFIX, POOL_PREFIX, POOL_SIZE};
+use crate::state::{Identifier, Pool, POOL_PREFIX, POOL_SIZE};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitPoolArgs {
@@ -11,7 +11,7 @@ pub struct InitPoolArgs {
     pub uri: String,
     pub decimals: u8,
     pub vesting_period: i64,
-    pub supply_for_initial_liquidity: u64,
+    pub vested_supply: u64,
     pub total_supply: u64,
     pub requires_collections: Vec<Pubkey>,
 }
@@ -30,8 +30,6 @@ pub struct InitPoolCtx<'info> {
 
     #[account(
         init,
-        seeds = [MINT_TOKEN_PREFIX.as_bytes(), pool.key().as_ref()],
-        bump,
         payer = payer,
         mint::decimals = params.decimals,
         mint::authority = pool,
@@ -63,16 +61,16 @@ pub struct InitPoolCtx<'info> {
 
     pub associated_token_program: Program<'info, AssociatedToken>,
 
+    /// CHECK: Checked by cpi
     #[account(address = mpl_token_metadata::ID)]
-    /// CHECK: Metaplex token program
-    pub mpl_token_program: UncheckedAccount<'info>,
+    pub mpl_token_program: AccountInfo<'info>,
 }
 
 pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
-    msg!("Setting pool");
+    msg!("Intializing pool");
     let pool = &mut ctx.accounts.pool;
     let identifier = &mut ctx.accounts.identifier;
-    pool.is_closed = false;
+    pool.allow_purchase = true;
     pool.bump = ctx.bumps.pool;
     pool.identifier = identifier.count;
     pool.requires_collections = args.requires_collections;
@@ -80,10 +78,10 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
     pool.total_supply = args.total_supply;
-    pool.supply_for_initial_liquidity = args.supply_for_initial_liquidity;
+    pool.vested_supply = args.vested_supply;
     pool.vesting_period = args.vesting_period;
 
-    msg!("Creating seeds");
+    msg!("Creating Pool seeds");
     let pool_identifier = pool.identifier.to_le_bytes();
     let seeds = &[
         POOL_PREFIX.as_bytes(),
@@ -92,7 +90,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     ];
     let signer = &[&seeds[..]];
 
-    msg!("Minting token");
+    msg!("Minting Remaining Token To Pool");
     //mint remaining token to pool
     let cpi_accounts = token::MintTo {
         mint: ctx.accounts.reward_mint.to_account_info(),
@@ -107,11 +105,11 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         .with_signer(signer);
     token::mint_to(
         cpi_context,
-        pool.total_supply - pool.supply_for_initial_liquidity
+        pool.total_supply - pool.vested_supply
     )?;
-    msg!("Creating metadata");
-    msg!("{}",ctx.accounts.mpl_token_program.key());
 
+
+    msg!("Creating metadata");
     let _ = CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
     .system_program(&ctx.accounts.system_program.to_account_info())
     .mint(&ctx.accounts.reward_mint.to_account_info())

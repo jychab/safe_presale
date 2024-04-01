@@ -1,23 +1,26 @@
 use crate::error::CustomError;
 use crate::state::*;
+use crate::utils::Calculator;
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token::mint_to;
 use anchor_spl::token::Mint;
+use anchor_spl::token::MintTo;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
-use anchor_spl::token::{self};
 use std::cmp::min;
 
 #[derive(Accounts)]
 pub struct ClaimRewardsCtx<'info> {
     #[account(
-        constraint = purchase_receipt.original_mint == original_mint.key()@ CustomError::InvalidStakeEntry
+        mut,
+        constraint = purchase_receipt.original_mint == original_mint.key()@ CustomError::MintNotAllowedToClaim
     )]
     purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
     #[account(
-        constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidStakePool,
-        constraint = pool.is_closed @CustomError::PresaleIsStillOngoing
+        constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
+        constraint = !pool.allow_purchase @CustomError::PresaleIsStillOngoing
     )]
     pool: Box<Account<'info, Pool>>,
 
@@ -55,50 +58,71 @@ pub struct ClaimRewardsCtx<'info> {
 pub fn handler(
     ctx: Context<ClaimRewardsCtx>,
 ) -> Result<()> {
-    let pool = &mut ctx.accounts.pool;
+    let pool = &ctx.accounts.pool;
+    let liquidity_collected = pool.liquidity_collected;
+    let vesting_started_at = pool.vesting_started_at.unwrap();
+    let vesting_period_end = pool.vesting_period_end.unwrap();
+    let vesting_period = pool.vesting_period;
+    let vested_supply = pool.vested_supply;
+
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
+    let amount_purchased = purchase_receipt.amount;
 
-    let pool_identifier = pool.identifier.to_le_bytes();
-    let pool_seed = &[
-        POOL_PREFIX.as_bytes(),
-        pool_identifier.as_ref(),
-        &[pool.bump],
-    ];
-    let signer = &[&pool_seed[..]];
-
+    let current_time = Clock::get()?.unix_timestamp;
     if let Some(last_claimed_at) = purchase_receipt.last_claimed_at {
-        if last_claimed_at > pool.vesting_period {
-            return Err(error!(CustomError::MaxRewardSecondsClaimed));
+        if last_claimed_at > vesting_period_end {
+            return Err(error!(CustomError::MaximumAmountClaimed));
         }
-    }
-    let vesting_period_end = purchase_receipt.vesting_started_at.checked_add(pool.vesting_period).unwrap();
-    let claim_duration = min(Clock::get().unwrap().unix_timestamp, vesting_period_end).checked_sub(purchase_receipt.last_claimed_at.unwrap_or(purchase_receipt.vesting_started_at)).unwrap();
-    let allocated_liquidity_against_liquidity_pool = ctx.accounts.purchase_receipt.amount.checked_div(pool.liquidity_collected).unwrap();
-    let token_allocation = allocated_liquidity_against_liquidity_pool.checked_mul(pool.supply_for_initial_liquidity).unwrap();
-
-
-    if let Some(claimable_fraction) = claim_duration.checked_div(pool.vesting_period)  {
-        let token_claimable = claimable_fraction.checked_mul(token_allocation.try_into().unwrap()).unwrap();
-       //mint remaining token to pool
-        let cpi_accounts = token::MintTo {
-            mint: ctx.accounts.reward_mint.to_account_info(),
-            to: ctx
-                .accounts
-                .payer_reward_mint_token_account
-                .to_account_info(),
-            authority: pool.to_account_info(),
+    }else{
+        //First time claiming 
+        let mint_elligible = match amount_purchased.checked_div(liquidity_collected) {
+            Some(result) => result.checked_mul(vested_supply),
+            None => return Err(error!(CustomError::IntegerOverflow)),
         };
-        let cpi_program = ctx.accounts.token_program.to_account_info();
-        let cpi_context = CpiContext::new(cpi_program, cpi_accounts)
-            .with_signer(signer);
-        token::mint_to(
-            cpi_context,
-            token_claimable.try_into().unwrap()
-        )?;
+        purchase_receipt.mint_elligible = mint_elligible;
+    }
+    //update last_claimed_at
+    purchase_receipt.last_claimed_at =  Some(current_time);
+
+    let mint_elligible_to_claim = match purchase_receipt.mint_elligible {
+        Some(mint_elligible) => Calculator::to_i64(mint_elligible).unwrap(),
+        None => return Err(error!(CustomError::ConversionFailure)),
     };
 
-    //update claims
-    ctx.accounts.purchase_receipt.last_claimed_at =  Some(Clock::get().unwrap().unix_timestamp);
+    // all using unix_timestamp
+    let duration_since_last_claimed = min(current_time, vesting_period_end)
+    .checked_sub(purchase_receipt.last_claimed_at.unwrap_or(vesting_started_at)).ok_or(CustomError::IntegerOverflow)?;
+    let time_spent_compared_to_vesting_period = duration_since_last_claimed.checked_div(vesting_period).ok_or(CustomError::IntegerOverflow)?;
+    let mint_claimable = match time_spent_compared_to_vesting_period.checked_mul(mint_elligible_to_claim) {
+        Some(result) => Calculator::to_u64_from_i64(result).unwrap(),
+        None => return Err(error!(CustomError::IntegerOverflow)),
+    };
 
+    //update mint_claimed
+    purchase_receipt.mint_claimed = purchase_receipt.mint_claimed.checked_add(mint_claimable).ok_or(CustomError::IntegerOverflow)?;
+
+    msg!("Minting {} tokens", mint_claimable);
+    let pool_identifier = pool.identifier.to_le_bytes();
+    let pool_seed = &[
+            POOL_PREFIX.as_bytes(),
+            pool_identifier.as_ref(),
+            &[pool.bump],
+        ];
+    let signer = &[&pool_seed[..]];
+    mint_to(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(), 
+            MintTo {
+                mint: ctx.accounts.reward_mint.to_account_info(),
+                to: ctx
+                    .accounts
+                    .payer_reward_mint_token_account
+                    .to_account_info(),
+                authority: pool.to_account_info(),
+            }
+        ).with_signer(signer),
+        mint_claimable
+    )?;   
+        
     Ok(())
 }

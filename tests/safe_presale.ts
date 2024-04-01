@@ -10,12 +10,15 @@ import { keypairIdentity, publicKey } from "@metaplex-foundation/umi";
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
   ComputeBudgetProgram,
-  Connection,
   Keypair,
+  LAMPORTS_PER_SOL,
   PublicKey,
   SystemProgram,
   Transaction,
+  TransactionError,
   TransactionMessage,
+  TransactionSignature,
+  VersionedMessage,
   VersionedTransaction,
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
@@ -29,6 +32,7 @@ import {
   getAssociatedTokenAddressSync,
   getAccount,
   unpackMint,
+  TOKEN_2022_PROGRAM_ID,
 } from "@solana/spl-token";
 import { step, xstep } from "mocha-steps";
 import {
@@ -37,7 +41,9 @@ import {
   ClmmPoolInfo,
   DEVNET_PROGRAM_ID,
   Fraction,
+  Liquidity,
   METADATA_PROGRAM_ID,
+  MarketV2,
   ObservationInfoLayout,
   POOL_VAULT_SEED,
   POSITION_SEED,
@@ -67,35 +73,19 @@ import { BN, Program } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/utils/token";
 import { assert } from "chai";
 import Decimal from "decimal.js";
-import { SPL_TOKEN_2022_PROGRAM_ID } from "../deps/mpl-token-metadata/clients/js/test/_setup";
 import { IDL as ClmmIDL, CLMM } from "./clmm";
+import { getSimulationUnits } from "./utils";
 
-describe("XBadge", () => {
+describe("Safe Presale", () => {
   // Configure the client to use the local cluster.
   // Use the RPC endpoint of your choice.
-  anchor.setProvider(
-    new anchor.AnchorProvider(
-      new Connection("https://api.devnet.solana.com"),
-      new anchor.Wallet(
-        Keypair.fromSecretKey(
-          Buffer.from([
-            225, 66, 240, 160, 100, 176, 216, 156, 98, 248, 136, 34, 108, 179,
-            97, 33, 245, 103, 165, 252, 153, 131, 20, 190, 60, 85, 11, 240, 176,
-            184, 50, 183, 208, 37, 214, 8, 236, 36, 232, 48, 167, 48, 193, 156,
-            104, 55, 81, 126, 209, 94, 147, 84, 22, 209, 65, 127, 206, 246, 2,
-            145, 207, 168, 186, 29,
-          ])
-        )
-      ),
-      { commitment: "finalized" }
-    )
-  );
+  anchor.setProvider(anchor.AnchorProvider.env());
 
   //
   // Program APIs.
   //
 
-  const program = anchor.workspace.XBadge as Program<SafePresale>;
+  const program = anchor.workspace.SafePresale as Program<SafePresale>;
   const clmmProgram = new Program<CLMM>(ClmmIDL, DEVNET_PROGRAM_ID.CLMM);
   const umi = createUmi(program.provider.connection.rpcEndpoint);
   const signer = umi.eddsa.createKeypairFromSecretKey(
@@ -114,6 +104,17 @@ describe("XBadge", () => {
   let rewardMint: PublicKey;
   let purchaseReceipt: PublicKey;
   let clmmInfo: ClmmPoolInfo;
+  let ammInfo: {
+    marketId: PublicKey;
+    requestQueue: PublicKey;
+    eventQueue: PublicKey;
+    bids: PublicKey;
+    asks: PublicKey;
+    baseVault: PublicKey;
+    quoteVault: PublicKey;
+    baseMint: PublicKey;
+    quoteMint: PublicKey;
+  };
 
   //
   // NFTs. These are the two mad lads for the tests.
@@ -226,10 +227,8 @@ describe("XBadge", () => {
       program.programId
     );
 
-    [rewardMint] = PublicKey.findProgramAddressSync(
-      [Buffer.from("mint"), poolId.toBuffer()],
-      program.programId
-    );
+    const rewardMintKeypair = Keypair.generate();
+    rewardMint = rewardMintKeypair.publicKey;
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -251,12 +250,12 @@ describe("XBadge", () => {
         .initPool({
           name: "Fock it.",
           symbol: "Fock",
-          decimals: 9,
+          decimals: 6,
           uri: "https://www.madlads.com/mad_lads_logo.svg",
           requiresCollections: [collection.mintAddress],
           vestingPeriod: new BN(Date.now()),
-          supplyForInitialLiquidity: new BN(500000000),
-          totalSupply: new BN(1000000000),
+          vestedSupply: new BN(50000),
+          totalSupply: new BN(10000000),
         })
         .accounts({
           payer: signer.publicKey,
@@ -270,10 +269,10 @@ describe("XBadge", () => {
           mplTokenProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .signers([toWeb3JsKeypair(signer)])
+        .signers([toWeb3JsKeypair(signer), rewardMintKeypair])
         .rpc();
       const data = await program.account.pool.fetch(poolId);
-      assert(data.isClosed === false);
+      assert(data.allowPurchase === true);
     } catch (e) {
       console.log(e);
     }
@@ -290,7 +289,7 @@ describe("XBadge", () => {
       true
     );
 
-    const amount = new BN(1000);
+    const amount = new BN(0.1 * LAMPORTS_PER_SOL);
     try {
       await program.methods
         .buyPresale(amount)
@@ -334,7 +333,190 @@ describe("XBadge", () => {
     );
   });
 
-  step("Create Market", async () => {
+  step("Create Market for AMM", async () => {
+    try {
+      const { innerTransactions, address } =
+        await MarketV2.makeCreateMarketInstructionSimple({
+          connection: program.provider.connection,
+          wallet: toWeb3JsPublicKey(signer.publicKey),
+          baseInfo: {
+            mint: rewardMint,
+            decimals: 6,
+          },
+          quoteInfo: {
+            mint: new PublicKey(WSOL.mint),
+            decimals: WSOL.decimals,
+          },
+          lotSize: 1,
+          tickSize: 0.000001,
+          dexProgramId: DEVNET_PROGRAM_ID.OPENBOOK_MARKET,
+          makeTxVersion: TxVersion.LEGACY,
+        });
+      const txs = await buildSimpleTransaction({
+        connection: program.provider.connection,
+        makeTxVersion: TxVersion.LEGACY,
+        payer: toWeb3JsPublicKey(signer.publicKey),
+        innerTransactions,
+      });
+      for (let tx of txs) {
+        (tx as Transaction).sign(toWeb3JsKeypair(signer));
+        const rawTransaction = tx.serialize();
+        const txid: TransactionSignature =
+          await program.provider.connection.sendRawTransaction(rawTransaction, {
+            skipPreflight: true,
+          });
+        const confirmation =
+          await program.provider.connection.confirmTransaction(txid);
+        if (confirmation.value.err) {
+          console.error(JSON.stringify(confirmation.value.err.valueOf()));
+          throw Error("Insufficient SOL");
+        }
+      }
+      ammInfo = address;
+    } catch (e) {
+      console.log(e);
+    }
+  });
+
+  step("Launch Token for AMM", async () => {
+    const poolInfo = Liquidity.getAssociatedPoolKeys({
+      version: 4,
+      marketVersion: 3,
+      marketId: ammInfo.marketId,
+      baseMint: ammInfo.baseMint,
+      quoteMint: ammInfo.quoteMint,
+      baseDecimals: 6,
+      quoteDecimals: WSOL.decimals,
+      programId: DEVNET_PROGRAM_ID.AmmV4,
+      marketProgramId: DEVNET_PROGRAM_ID.OPENBOOK_MARKET,
+    });
+
+    const remainingAccounts = [
+      { pubkey: poolInfo.id, isSigner: false, isWritable: true },
+      { pubkey: poolInfo.authority, isSigner: false, isWritable: false },
+      {
+        pubkey: poolInfo.openOrders,
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: poolInfo.baseVault, isSigner: false, isWritable: true },
+      { pubkey: poolInfo.quoteVault, isSigner: false, isWritable: true },
+      { pubkey: poolInfo.targetOrders, isSigner: false, isWritable: true },
+      { pubkey: poolInfo.configId, isSigner: false, isWritable: false },
+      {
+        pubkey: new PublicKey("3XMrhbv989VxAMi3DErLV9eJht1pHppW5LbKxe9fkEFR"),
+        isSigner: false,
+        isWritable: true,
+      },
+      { pubkey: poolInfo.marketProgramId, isSigner: false, isWritable: false },
+      { pubkey: poolInfo.marketId, isSigner: false, isWritable: false },
+    ];
+
+    const userTokenCoin = getAssociatedTokenAddressSync(
+      poolInfo.baseMint,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
+    const userTokenPc = getAssociatedTokenAddressSync(
+      poolInfo.quoteMint,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
+    const userTokenLp = getAssociatedTokenAddressSync(
+      poolInfo.lpMint,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
+    const poolTokenCoin = getAssociatedTokenAddressSync(
+      poolInfo.baseMint,
+      poolId,
+      true
+    );
+    const poolTokenPc = getAssociatedTokenAddressSync(
+      poolInfo.quoteMint,
+      poolId,
+      true
+    );
+    const poolTokenLp = getAssociatedTokenAddressSync(
+      poolInfo.lpMint,
+      poolId,
+      true
+    );
+    const ixs = [];
+    ixs.push(
+      await program.methods
+        .launchTokenAmm(poolInfo.nonce, new BN(Date.now()))
+        .accounts({
+          pool: poolId,
+          userWallet: signer.publicKey,
+          userTokenCoin: userTokenCoin,
+          userTokenPc: userTokenPc,
+          userTokenLp: userTokenLp,
+          poolTokenCoin: poolTokenCoin,
+          poolTokenPc: poolTokenPc,
+          poolTokenLp: poolTokenLp,
+          rent: RENT_PROGRAM_ID,
+          systemProgram: SYSTEM_PROGRAM_ID,
+          tokenProgram: TOKEN_PROGRAM_ID,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          ammCoinMint: poolInfo.baseMint,
+          ammPcMint: poolInfo.quoteMint,
+          ammLpMint: poolInfo.lpMint,
+          raydiumAmmProgram: DEVNET_PROGRAM_ID.AmmV4,
+        })
+        .signers([toWeb3JsKeypair(signer)])
+        .remainingAccounts(remainingAccounts)
+        .instruction()
+    );
+
+    const [microLamports, units, recentBlockhash] = await Promise.all([
+      100,
+      getSimulationUnits(
+        program.provider.connection,
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        []
+      ),
+      program.provider.connection.getLatestBlockhash(),
+    ]);
+    ixs.unshift(ComputeBudgetProgram.setComputeUnitPrice({ microLamports }));
+    if (units) {
+      // probably should add some margin of error to units
+      console.log(units);
+      ixs.unshift(
+        ComputeBudgetProgram.setComputeUnitLimit({ units: units * 1.1 })
+      );
+    }
+
+    const tx = new VersionedTransaction(
+      new TransactionMessage({
+        instructions: ixs,
+        recentBlockhash: recentBlockhash.blockhash,
+        payerKey: toWeb3JsPublicKey(signer.publicKey),
+      }).compileToV0Message()
+    );
+    tx.sign([toWeb3JsKeypair(signer)]);
+    let txId;
+    try {
+      txId = await program.provider.connection.sendTransaction(tx);
+      const confirmation = await program.provider.connection.confirmTransaction(
+        txId
+      );
+      if (confirmation.value.err) {
+        txId = null;
+        console.error(JSON.stringify(confirmation.value.err.valueOf()));
+      } else {
+        console.log(txId);
+      }
+    } catch (e) {
+      console.log(txId);
+      txId = null;
+      console.log(e.logs.length > 50 ? e.logs.slice(-50) : e);
+    }
+    assert(txId !== null, "Failed Transaction");
+  });
+
+  xstep("Create Market for CLMM", async () => {
     const config: ClmmConfigInfo = {
       id: getPdaAmmConfigId(DEVNET_PROGRAM_ID.CLMM, 3).publicKey,
       index: 3,
@@ -351,7 +533,7 @@ describe("XBadge", () => {
     const initialPrice = new Decimal(
       new Fraction(
         poolData.liquidityCollected,
-        poolData.supplyForInitialLiquidity.toNumber()
+        poolData.vestedSupply.toNumber()
       ).toFixed(12)
     );
     const mint1 = {
@@ -489,11 +671,9 @@ describe("XBadge", () => {
     });
   });
 
-  step("Launch Token", async () => {
+  xstep("Launch Token for CLmm", async () => {
     const poolData = await program.account.pool.fetch(poolId);
-    const remainingAmount = poolData.totalSupply.sub(
-      poolData.supplyForInitialLiquidity
-    );
+    const remainingAmount = poolData.totalSupply.sub(poolData.vestedSupply);
 
     const lowerPriceAndTick = Clmm.getPriceAndTick({
       poolInfo: clmmInfo,
@@ -662,7 +842,7 @@ describe("XBadge", () => {
             associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
             systemProgram: SystemProgram.programId,
             metadataProgram: METADATA_PROGRAM_ID,
-            tokenProgram2022: SPL_TOKEN_2022_PROGRAM_ID,
+            tokenProgram2022: TOKEN_2022_PROGRAM_ID,
             rent: RENT_PROGRAM_ID,
             pool: poolId,
             tokenAccount0: payerAndToken0Ata,
