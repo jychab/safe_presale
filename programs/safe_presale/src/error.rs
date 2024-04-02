@@ -30,10 +30,12 @@ pub enum CustomError {
     InvalidRewardMint,
     #[msg("Nothing left to claim")]
     MaximumAmountClaimed,
-    #[msg("Vesting Period has not ended")]
-    VestingStillInProgress,
+    #[msg("Either presale time limit has not ended or Vesting is still in progress")]
+    UnauthorizedAtCurrentTime,
     #[msg("Vesting Supply larget than total supply")]
     VestingSupplyLargerThanTotalSupply,
     #[msg("Creator Fees basis points exceed 10000")]
     CreatorBasisPointsExceedMaximumAmount,
+    #[msg("Purchase Amount cannot be zero")]
+    AmountPurchasedIsZero,
 }

@@ -18,6 +18,8 @@ pub mod public_keys {
     }
 }
 
+pub const MINT_PREFIX: &str = "mint";
+
 #[account]
 pub struct Pool {
     pub bump: u8,
@@ -32,6 +34,7 @@ pub struct Pool {
     pub creator_fee_basis_points: u16,
     pub vested_supply: u64,
     pub total_supply: u64,
+    pub presale_time_limit: i64,
     pub vesting_period: u64,
     pub vesting_started_at: Option<i64>,
     pub vesting_period_end: Option<i64>,
@@ -68,3 +71,65 @@ impl IsInitialized for PurchaseReceipt {
 
 pub const PURCHASE_RECEIPT_PREFIX: &str = "receipt";
 pub const PURCHASE_RECEIPT_SIZE: usize = 8 + std::mem::size_of::<PurchaseReceipt>() + 8;
+
+#[event]
+pub struct InitializedPoolEvent {
+    pub authority: Pubkey,
+    pub pool: Pubkey,
+    pub mint: Pubkey,
+    pub presale_time_limit: i64,
+    pub creator_fee_basis_points: u16,
+    pub vested_supply: u64,
+    pub total_supply: u64,
+    pub vesting_period: u64,
+}
+
+#[event]
+pub struct PurchasedPresaleEvent {
+    pub payer: Pubkey,
+    pub amount: u64,
+    pub pool: Pubkey,
+    pub original_mint: Pubkey,
+    pub liquidity_collected: u64,
+}
+
+#[event]
+pub struct ClaimRewardsEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub mint_claimed: u64,
+    pub mint_elligible: u64,
+    pub original_mint: Pubkey,
+    pub original_mint_owner: Pubkey,
+}
+
+#[event]
+pub struct LaunchTokenAmmEvent {
+    pub authority: Pubkey,
+    pub pool: Pubkey,
+    pub amount_coin: u64,
+    pub amount_pc: u64,
+    pub amount_lp_received: u64,
+    pub lp_mint: Pubkey,
+    pub mint: Pubkey,
+    pub vesting_started_at: i64,
+    pub vesting_ending_at: i64,
+}
+
+#[event]
+pub struct WithdrawLpTokenEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub original_mint: Pubkey,
+    pub amount_lp_withdrawn: u64,
+    pub lp_mint: Pubkey,
+}
+
+#[event]
+pub struct WithdrawEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub original_mint: Pubkey,
+    pub amount_wsol_withdrawn: u64,
+    pub wsol_mint: Pubkey,
+}

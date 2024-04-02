@@ -7,7 +7,9 @@ use anchor_lang::solana_program;
 use anchor_spl::associated_token;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::associated_token::Create;
+use anchor_spl::token::close_account;
 use anchor_spl::token::transfer;
+use anchor_spl::token::CloseAccount;
 use anchor_spl::token::Token;
 use anchor_spl::token::Transfer;
 use anchor_spl::token_interface::Mint;
@@ -18,7 +20,7 @@ pub struct LaunchTokenAmmCtx<'info> {
     #[account(mut,
         constraint = pool.mint == amm_coin_mint.key(),
         constraint = pool.authority == user_wallet.key(),
-        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched
+        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
     )]
     pub pool: Box<Account<'info, Pool>>,
     /// Pays to mint the position
@@ -142,6 +144,19 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         signer,
         amount_pc_in_pool,
     )?;
+    let creator_fees = amount_pc_in_pool
+        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
+        .ok_or(CustomError::IntegerOverflow)?
+        .checked_div(10000)
+        .ok_or(CustomError::IntegerOverflow)?;
+
+    let amount_after_creator_fees = amount_pc_in_pool
+        .checked_sub(creator_fees)
+        .ok_or(CustomError::IntegerOverflow)?;
+    msg!(
+        "Using {} lamports for AMM liquidity after subtracting creator fees",
+        amount_after_creator_fees
+    );
     msg!("Launching Amm");
     cpi_initialize2(
         token_program.to_account_info(),
@@ -168,12 +183,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_token_lp.to_account_info(),
         nonce,
         open_time,
-        amount_pc_in_pool,
+        amount_after_creator_fees,
         amount_coin_in_pool,
     )?;
 
     let liquidity = Calculator::to_u64(
-        U128::from(amount_pc_in_pool)
+        U128::from(amount_after_creator_fees)
             .checked_mul(amount_coin_in_pool.into())
             .unwrap()
             .integer_sqrt()
@@ -200,6 +215,28 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         ctx.accounts.pool_token_lp.to_account_info(),
         user_lp_amount,
     )?;
+
+    msg!("Unwrapping any remaining wsol on payer account");
+    close_account(CpiContext::new(
+        ctx.accounts.token_program.to_account_info(),
+        CloseAccount {
+            account: ctx.accounts.user_token_pc.to_account_info(),
+            destination: ctx.accounts.user_wallet.to_account_info(),
+            authority: ctx.accounts.user_wallet.to_account_info(),
+        },
+    ))?;
+
+    emit!(LaunchTokenAmmEvent {
+        authority: pool.authority,
+        pool: pool.key(),
+        amount_coin: amount_coin_in_pool,
+        amount_pc: amount_pc_in_pool,
+        amount_lp_received: user_lp_amount,
+        lp_mint: pool.lp_mint.unwrap(),
+        mint: pool.mint,
+        vesting_started_at: pool.vesting_started_at.unwrap(),
+        vesting_ending_at: pool.vesting_period_end.unwrap(),
+    });
     Ok(())
 }
 

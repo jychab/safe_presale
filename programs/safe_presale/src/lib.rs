@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("9jqqZaNVmt9w4umoa7AajntuQiQPhfD5SMKMEpyk3R3Z");
+declare_id!("6wfJXRRNVXMs73jDZLjsXsamV9Rf4ousKRUo5mpmaGUQ");
 
 pub mod error;
 pub mod instructions;
@@ -28,6 +28,9 @@ pub mod safe_presale {
     }
     pub fn withdraw_lp_token<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         instructions::withdraw_lp_token::handler(ctx)
+    }
+    pub fn withdraw<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
+        instructions::withdraw::handler(ctx)
     }
     pub fn launch_token_amm<'a, 'b, 'c: 'info, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, LaunchTokenAmmCtx<'info>>,

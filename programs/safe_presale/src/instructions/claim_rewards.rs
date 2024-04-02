@@ -80,13 +80,7 @@ pub fn handler(
         }
     }else{
         //First time claiming 
-        let creator_fees = purchase_receipt.amount
-            .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
-            .ok_or(CustomError::IntegerOverflow)?
-            .checked_div(10000)
-            .ok_or(CustomError::IntegerOverflow)?;
-        let amount_after_creator_fees = purchase_receipt.amount.checked_sub(creator_fees).ok_or(CustomError::IntegerOverflow)?;
-        let mint_elligible = match amount_after_creator_fees.checked_mul(vested_supply) {
+        let mint_elligible = match purchase_receipt.amount.checked_mul(vested_supply) {
             Some(result) => result.checked_div(liquidity_collected).ok_or(CustomError::IntegerOverflow)?,
             None => return Err(error!(CustomError::IntegerOverflow)),
         };
@@ -132,6 +126,15 @@ pub fn handler(
         ).with_signer(signer),
         mint_claimable
     )?;   
+
+    emit!(ClaimRewardsEvent {
+        payer: ctx.accounts.payer.key(),
+        pool: ctx.accounts.pool.key(),
+        mint_claimed: mint_claimable,
+        mint_elligible: mint_elligible_to_claim,
+        original_mint: ctx.accounts.nft.key(),
+        original_mint_owner: ctx.accounts.nft_owner.key(),
+    });
         
     Ok(())
 }

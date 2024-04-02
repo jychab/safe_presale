@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
 
-use crate::{error::CustomError, state::{Identifier, Pool, POOL_PREFIX, POOL_SIZE}};
+use crate::{error::CustomError, state::{Identifier, InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitPoolArgs {
@@ -10,6 +10,7 @@ pub struct InitPoolArgs {
     pub symbol: String,
     pub uri: String,
     pub decimals: u8,
+    pub max_presale_time: u64,
     pub vesting_period: u64,
     pub vested_supply: u64,
     pub total_supply: u64,
@@ -32,6 +33,8 @@ pub struct InitPoolCtx<'info> {
     #[account(
         init,
         payer = payer,
+        seeds = [MINT_PREFIX.as_bytes(), identifier.count.to_le_bytes().as_ref()],
+        bump,
         mint::decimals = params.decimals,
         mint::authority = pool,
     )]
@@ -78,15 +81,13 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.mint = ctx.accounts.reward_mint.key();
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
-
-    
+    pool.presale_time_limit = Clock::get()?.unix_timestamp.checked_add(args.max_presale_time.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
     if args.vested_supply > args.total_supply {
         return Err(error!(CustomError::VestingSupplyLargerThanTotalSupply))
     }
     if args.creator_fee_basis_points > 10000 {
         return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
     }
-
     pool.total_supply = args.total_supply;
     pool.vested_supply = args.vested_supply;
     pool.vesting_period = args.vesting_period;
@@ -139,5 +140,18 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     }).invoke_signed(signer)?;
 
     identifier.count += 1;
+
+    // Emit the Initialzed pool event
+    emit!(InitializedPoolEvent {
+        authority: pool.authority,
+        pool: pool.key(),
+        mint: pool.mint,
+        presale_time_limit: pool.presale_time_limit,
+        creator_fee_basis_points: pool.creator_fee_basis_points,
+        vested_supply: pool.vested_supply,
+        total_supply: pool.total_supply,
+        vesting_period: pool.vesting_period,
+    });
+
     Ok(())
 }

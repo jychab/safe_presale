@@ -9,8 +9,10 @@ use anchor_spl::{
 #[derive(Accounts)]
 pub struct WithdrawPoolLpToken<'info> {
     #[account(
+        mut,
+        close = user_wallet,
         constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
-        constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool
+        constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
     #[account(
@@ -20,7 +22,7 @@ pub struct WithdrawPoolLpToken<'info> {
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         constraint = pool.authority == pool_authority.key(),
-        constraint = pool.vesting_period_end.is_some() && pool.vesting_period_end.unwrap() < Clock::get()?.unix_timestamp @CustomError::VestingStillInProgress
+        constraint = pool.vesting_period_end.is_some() && pool.vesting_period_end.unwrap() < Clock::get()?.unix_timestamp @CustomError::UnauthorizedAtCurrentTime
     )]
     pub pool: Box<Account<'info, Pool>>,
     /// CHECK: Not dangerous because we are not writing or reading data from this account
@@ -61,7 +63,7 @@ pub struct WithdrawPoolLpToken<'info> {
 }
 pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
     let pool = &ctx.accounts.pool;
-    let purchase_receipt = &ctx.accounts.purchase_receipt;
+    let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),
@@ -112,5 +114,14 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         .with_signer(signer),
         amount_after_creator_fees,
     )?;
+
+    emit!(WithdrawLpTokenEvent {
+        payer: ctx.accounts.user_wallet.key(),
+        pool: pool.key(),
+        original_mint: ctx.accounts.purchase_receipt.original_mint,
+        amount_lp_withdrawn: lp_elligible,
+        lp_mint: pool.lp_mint.unwrap(),
+    });
+
     Ok(())
 }

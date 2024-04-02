@@ -208,10 +208,13 @@ describe("Safe Presale", () => {
       [Buffer.from("pool"), identifier.toArrayLike(Buffer, "le", 8)],
       program.programId
     );
+    const [rewardMintKey] = PublicKey.findProgramAddressSync(
+      [Buffer.from("mint"), identifier.toArrayLike(Buffer, "le", 8)],
+      program.programId
+    );
 
-    const rewardMintKeypair = Keypair.generate();
     rewardMint = {
-      mint: rewardMintKeypair.publicKey,
+      mint: rewardMintKey,
       name: "XYZ",
       symbol: "Fock",
       decimal: 5,
@@ -220,6 +223,7 @@ describe("Safe Presale", () => {
     const totalSupply = new BN(10000000);
     const vestedSupply = new BN(5000000);
     const vestingPeriod = new BN(3 * 24 * 60 * 60); //3days in seconds
+    const maxPresaleTime = new BN(3 * 24 * 60 * 60);
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -243,6 +247,7 @@ describe("Safe Presale", () => {
           symbol: rewardMint.symbol,
           decimals: rewardMint.decimal,
           uri: rewardMint.uri,
+          maxPresaleTime: maxPresaleTime,
           requiresCollections: [collection.mintAddress],
           creatorFeeBasisPoints: 500,
           vestingPeriod: vestingPeriod,
@@ -261,7 +266,7 @@ describe("Safe Presale", () => {
           mplTokenProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .signers([toWeb3JsKeypair(signer), rewardMintKeypair])
+        .signers([toWeb3JsKeypair(signer)])
         .rpc();
       const data = await program.account.pool.fetch(poolId);
       assert(data.allowPurchase === true, "Not allowed for purchase");
@@ -323,7 +328,6 @@ describe("Safe Presale", () => {
           pool: poolId,
           nft: nftA.mintAddress,
           nftMetadata: nftA.metadataAddress,
-          poolAuthority: signer.publicKey,
           payer: signer.publicKey,
           systemProgram: SystemProgram.programId,
         })
@@ -349,7 +353,7 @@ describe("Safe Presale", () => {
     );
     const pool = await program.account.pool.fetch(poolId);
     assert(
-      pool.liquidityCollected.toNumber() === (amount.toNumber() * 9500) / 10000,
+      pool.liquidityCollected.toNumber() === amount.toNumber(),
       "Pool Liquidity not equal"
     );
     const poolWsolAmount = await getAccount(
@@ -357,7 +361,7 @@ describe("Safe Presale", () => {
       poolAndWSOLATA
     );
     assert(
-      Number(poolWsolAmount.amount) === (amount.toNumber() * 9500) / 10000,
+      Number(poolWsolAmount.amount) === amount.toNumber(),
       "WSOL amount not equal"
     );
   });
@@ -394,7 +398,6 @@ describe("Safe Presale", () => {
           pool: poolId,
           nft: nftA.mintAddress,
           nftMetadata: nftA.metadataAddress,
-          poolAuthority: signer.publicKey,
           payer: randomPayer.publicKey,
           systemProgram: SystemProgram.programId,
         })
