@@ -6,11 +6,13 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount},
 };
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct WithdrawPoolLpToken<'info> {
     #[account(
         mut,
         close = user_wallet,
+        constraint = purchase_receipt.lp_elligible.is_some() @CustomError::CheckClaimFirstBeforeClaiming,
         constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
         constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool,
     )]
@@ -21,17 +23,13 @@ pub struct WithdrawPoolLpToken<'info> {
     )]
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
-        constraint = pool.authority == pool_authority.key(),
         constraint = pool.vesting_period_end.is_some() && pool.vesting_period_end.unwrap() < Clock::get()?.unix_timestamp @CustomError::UnauthorizedAtCurrentTime
     )]
     pub pool: Box<Account<'info, Pool>>,
-    /// CHECK: Not dangerous because we are not writing or reading data from this account
-    pub pool_authority: AccountInfo<'info>,
     #[account(
-        init_if_needed,
-        payer = user_wallet,
-        associated_token::mint = lp_mint,
-        associated_token::authority = pool_authority,
+        mut, 
+        constraint = pool_authority_token_lp.owner == pool.authority,
+        constraint = pool_authority_token_lp.mint == lp_mint.key()
     )]
     pub pool_authority_token_lp: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
@@ -64,6 +62,7 @@ pub struct WithdrawPoolLpToken<'info> {
 pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
+    let lp_elligible = purchase_receipt.lp_elligible.unwrap();
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),
@@ -71,13 +70,6 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         &[pool.bump],
     ];
     let signer = &[&pool_seed[..]];
-
-    let lp_elligible = match purchase_receipt.amount.checked_mul(pool.lp_mint_supply) {
-        Some(result) => result
-            .checked_div(pool.liquidity_collected)
-            .ok_or(CustomError::IntegerOverflow)?,
-        None => return Err(error!(CustomError::IntegerOverflow)),
-    };
 
     let creator_fees = lp_elligible
         .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
@@ -115,7 +107,7 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         amount_after_creator_fees,
     )?;
 
-    emit!(WithdrawLpTokenEvent {
+    emit_cpi!(WithdrawLpTokenEvent {
         payer: ctx.accounts.user_wallet.key(),
         pool: pool.key(),
         original_mint: ctx.accounts.purchase_receipt.original_mint,

@@ -7,8 +7,8 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token::{sync_native, Mint, SyncNative, Token, TokenAccount},
 };
-use mpl_token_metadata::{self, accounts::Metadata};
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct BuyPresaleCtx<'info> {
     #[account(
@@ -44,14 +44,14 @@ pub struct BuyPresaleCtx<'info> {
     )]
     pub nft: Box<Account<'info, Mint>>,
 
-    #[account(
-        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
-        bump,
-        seeds::program = mpl_token_metadata::ID
-    )]
-    /// CHECK: This is not dangerous because we don't read or write from this account
-    pub nft_metadata: AccountInfo<'info>,
-
+    // To revisit this again due to multiple nft standards popping up
+    // #[account(
+    //     seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
+    //     bump,
+    //     seeds::program = mpl_token_metadata::ID
+    // )]
+    // /// CHECK: This is not dangerous because we don't read or write from this account
+    // pub nft_metadata: AccountInfo<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -63,7 +63,6 @@ pub struct BuyPresaleCtx<'info> {
 }
 
 pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
-    msg!("Initializing purchase receipt");
     if amount == 0 {
         return Err(error!(CustomError::AmountPurchasedIsZero));
     }
@@ -84,42 +83,10 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
             .ok_or(CustomError::IntegerOverflow)?;
     }
 
-    msg!("Checking allowlist");
-    if !pool.requires_collections.is_empty() {
-        let mut allowed = false;
-
-        if !ctx.accounts.nft_metadata.data_is_empty() {
-            let mint_metadata_data = ctx
-                .accounts
-                .nft_metadata
-                .try_borrow_mut_data()
-                .expect("Failed to borrow data");
-            if ctx.accounts.nft_metadata.to_account_info().owner.key() != mpl_token_metadata::ID {
-                return Err(error!(CustomError::InvalidMintMetadataOwner));
-            }
-            let nft_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
-                .expect("Failed to deserialize metadata");
-            if nft_metadata.mint != ctx.accounts.nft.key() {
-                return Err(error!(CustomError::InvalidMintMetadata));
-            }
-
-            if !pool.requires_collections.is_empty() && nft_metadata.collection.is_some() {
-                let collection = nft_metadata.collection.unwrap();
-                if collection.verified && pool.requires_collections.contains(&collection.key) {
-                    allowed = true
-                }
-            }
-        }
-        if !allowed {
-            return Err(error!(CustomError::MintNotAllowedInPool));
-        }
-    }
-
     pool.liquidity_collected = pool
         .liquidity_collected
         .checked_add(amount)
         .ok_or(CustomError::IntegerOverflow)?;
-    msg!("Adding liquidity to the pool");
     transfer(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
@@ -137,7 +104,7 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         },
     ))?;
 
-    emit!(PurchasedPresaleEvent {
+    emit_cpi!(PurchasedPresaleEvent {
         payer: ctx.accounts.payer.key(),
         amount: amount,
         pool: pool.key(),

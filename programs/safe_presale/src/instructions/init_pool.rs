@@ -10,14 +10,15 @@ pub struct InitPoolArgs {
     pub symbol: String,
     pub uri: String,
     pub decimals: u8,
+    pub presale_target: u64,
     pub max_presale_time: u64,
     pub vesting_period: u64,
     pub vested_supply: u64,
     pub total_supply: u64,
     pub creator_fee_basis_points: u16, 
-    pub requires_collections: Vec<Pubkey>,
 }
 
+#[event_cpi]
 #[derive(Accounts)]
 #[instruction(params:InitPoolArgs)]
 pub struct InitPoolCtx<'info> {
@@ -71,13 +72,11 @@ pub struct InitPoolCtx<'info> {
 }
 
 pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
-    msg!("Intializing pool");
     let pool = &mut ctx.accounts.pool;
     let identifier = &mut ctx.accounts.identifier;
     pool.allow_purchase = true;
     pool.bump = ctx.bumps.pool;
     pool.identifier = identifier.count;
-    pool.requires_collections = args.requires_collections;
     pool.mint = ctx.accounts.reward_mint.key();
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
@@ -92,8 +91,8 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.vested_supply = args.vested_supply;
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
+    pool.presale_target = args.presale_target;
 
-    msg!("Creating Pool seeds");
     let pool_identifier = pool.identifier.to_le_bytes();
     let seeds = &[
         POOL_PREFIX.as_bytes(),
@@ -102,7 +101,6 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     ];
     let signer = &[&seeds[..]];
 
-    msg!("Minting Remaining Token To Pool");
     //mint remaining token to pool
     let cpi_accounts = token::MintTo {
         mint: ctx.accounts.reward_mint.to_account_info(),
@@ -120,7 +118,6 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         pool.total_supply - pool.vested_supply
     )?;
 
-    msg!("Creating metadata");
     CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
     .system_program(&ctx.accounts.system_program.to_account_info())
     .mint(&ctx.accounts.reward_mint.to_account_info())
@@ -142,10 +139,11 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     identifier.count += 1;
 
     // Emit the Initialzed pool event
-    emit!(InitializedPoolEvent {
+    emit_cpi!(InitializedPoolEvent {
         authority: pool.authority,
         pool: pool.key(),
         mint: pool.mint,
+        presale_target: pool.presale_target,
         presale_time_limit: pool.presale_time_limit,
         creator_fee_basis_points: pool.creator_fee_basis_points,
         vested_supply: pool.vested_supply,

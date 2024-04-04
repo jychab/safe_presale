@@ -6,6 +6,7 @@ use anchor_spl::{
     token_interface::{Mint, TokenAccount},
 };
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct Withdraw<'info> {
     #[account(
@@ -76,7 +77,6 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
         purchase_receipt.amount,
     )?;
 
-    msg!("Unwrapping any remaining WSol on payer account");
     close_account(CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         CloseAccount {
@@ -86,7 +86,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
         },
     ))?;
 
-    emit!(WithdrawEvent {
+    emit_cpi!(WithdrawEvent {
         payer: ctx.accounts.user_wallet.key(),
         pool: pool.key(),
         original_mint: purchase_receipt.original_mint,

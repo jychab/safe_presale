@@ -15,9 +15,12 @@ use anchor_spl::token::Transfer;
 use anchor_spl::token_interface::Mint;
 use anchor_spl::token_interface::TokenAccount;
 
+#[event_cpi]
 #[derive(Accounts)]
 pub struct LaunchTokenAmmCtx<'info> {
     #[account(mut,
+        constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleTimeLimtExceeded,
+        constraint = pool.liquidity_collected >= pool.presale_target @CustomError::PresaleTargetNotMet,
         constraint = pool.mint == amm_coin_mint.key(),
         constraint = pool.authority == user_wallet.key(),
         constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
@@ -120,10 +123,6 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     let amount_coin_in_pool = pool.total_supply.checked_sub(pool.vested_supply).unwrap();
     let amount_pc_in_pool = pool.liquidity_collected;
 
-    msg!(
-        "Transfering {} mint from pool to payer",
-        amount_coin_in_pool
-    );
     transfer_amount(
         token_program.to_account_info(),
         pool_token_coin.to_account_info(),
@@ -132,10 +131,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         signer,
         amount_coin_in_pool,
     )?;
-    msg!(
-        "Transfering {} lamports from pool to payer",
-        amount_pc_in_pool
-    );
+
     transfer_amount(
         token_program.to_account_info(),
         pool_token_pc.to_account_info(),
@@ -153,11 +149,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     let amount_after_creator_fees = amount_pc_in_pool
         .checked_sub(creator_fees)
         .ok_or(CustomError::IntegerOverflow)?;
-    msg!(
-        "Using {} lamports for AMM liquidity after subtracting creator fees",
-        amount_after_creator_fees
-    );
-    msg!("Launching Amm");
+
     cpi_initialize2(
         token_program.to_account_info(),
         associated_token_program.to_account_info(),
@@ -202,8 +194,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         )
         .unwrap();
 
-    msg!("Transfering {} lp token from payer to pool", user_lp_amount);
-    pool.lp_mint_supply = user_lp_amount;
+    pool.lp_mint_supply = Some(user_lp_amount);
     transfer_lp_token(
         user_wallet.to_account_info(),
         associated_token_program.to_account_info(),
@@ -216,7 +207,6 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_lp_amount,
     )?;
 
-    msg!("Unwrapping any remaining wsol on payer account");
     close_account(CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         CloseAccount {
@@ -226,7 +216,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         },
     ))?;
 
-    emit!(LaunchTokenAmmEvent {
+    emit_cpi!(LaunchTokenAmmEvent {
         authority: pool.authority,
         pool: pool.key(),
         amount_coin: amount_coin_in_pool,

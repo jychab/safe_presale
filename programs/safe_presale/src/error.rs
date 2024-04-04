@@ -8,6 +8,10 @@ pub enum CustomError {
     PresaleIsStillOngoing,
     #[msg("Presale has ended!")]
     PresaleHasEnded,
+    #[msg("Exceeded presale time limit")]
+    PresaleTimeLimtExceeded,
+    #[msg("Presale target not met!")]
+    PresaleTargetNotMet,
     #[msg("Token already launched")]
     TokenHasLaunched,
     #[msg("Conversion to u64 failed with an overflow or underflow")]
@@ -38,4 +42,8 @@ pub enum CustomError {
     CreatorBasisPointsExceedMaximumAmount,
     #[msg("Purchase Amount cannot be zero")]
     AmountPurchasedIsZero,
+    #[msg("Check Claim Amount first before claiming")]
+    CheckClaimFirstBeforeClaiming,
+    #[msg("Claim Amount is already updated")]
+    ClaimedAlreadyChecked,
 }

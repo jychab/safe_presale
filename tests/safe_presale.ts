@@ -248,7 +248,7 @@ describe("Safe Presale", () => {
           decimals: rewardMint.decimal,
           uri: rewardMint.uri,
           maxPresaleTime: maxPresaleTime,
-          requiresCollections: [collection.mintAddress],
+          presaleTarget: new BN(10),
           creatorFeeBasisPoints: 500,
           vestingPeriod: vestingPeriod,
           vestedSupply: vestedSupply,
@@ -327,7 +327,6 @@ describe("Safe Presale", () => {
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
           nft: nftA.mintAddress,
-          nftMetadata: nftA.metadataAddress,
           payer: signer.publicKey,
           systemProgram: SystemProgram.programId,
         })
@@ -397,7 +396,6 @@ describe("Safe Presale", () => {
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
           nft: nftA.mintAddress,
-          nftMetadata: nftA.metadataAddress,
           payer: randomPayer.publicKey,
           systemProgram: SystemProgram.programId,
         })
@@ -596,6 +594,26 @@ describe("Safe Presale", () => {
       console.log(e.logs.length > 50 ? e.logs.slice(-50) : e);
     }
     assert(txId !== null, "Failed Transaction");
+  });
+
+  step("Check Claim Rewards", async () => {
+    [purchaseReceipt] = PublicKey.findProgramAddressSync(
+      [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
+      program.programId
+    );
+    try {
+      await program.methods
+        .checkClaimEllgibility()
+        .accounts({
+          purchaseReceipt: purchaseReceipt,
+          pool: poolId,
+          payer: toWeb3JsPublicKey(signer.publicKey),
+        })
+        .signers([toWeb3JsKeypair(signer)])
+        .rpc();
+    } catch (e) {
+      console.log(e);
+    }
   });
 
   step("Claim rewards", async () => {

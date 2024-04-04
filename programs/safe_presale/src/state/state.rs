@@ -26,21 +26,22 @@ pub struct Pool {
     pub allow_purchase: bool,
     pub identifier: u64,
     pub authority: Pubkey,
-    pub requires_collections: Vec<Pubkey>,
     pub mint: Pubkey,
     pub lp_mint: Option<Pubkey>,
-    pub lp_mint_supply: u64,
+    pub lp_mint_supply: Option<u64>,
     pub liquidity_collected: u64,
     pub creator_fee_basis_points: u16,
     pub vested_supply: u64,
     pub total_supply: u64,
+    pub presale_target: u64,
     pub presale_time_limit: i64,
     pub vesting_period: u64,
     pub vesting_started_at: Option<i64>,
     pub vesting_period_end: Option<i64>,
 }
 pub const POOL_PREFIX: &str = "pool";
-pub const POOL_SIZE: usize = 8 + std::mem::size_of::<Pool>() + 8;
+pub const POOL_SIZE: usize =
+    8 + 1 + 1 + 8 + 32 + 32 + 1 + 32 + 1 + 8 + 8 + 2 + 8 + 8 + 8 + 8 + 1 + 8 + 1 + 8 + 8;
 
 #[account]
 pub struct Identifier {
@@ -57,6 +58,7 @@ pub struct PurchaseReceipt {
     pub bump: u8,
     pub pool: Pubkey,
     pub amount: u64,
+    pub lp_elligible: Option<u64>,
     pub original_mint: Pubkey,
     pub mint_claimed: u64,
     pub mint_elligible: Option<u64>,
@@ -77,6 +79,7 @@ pub struct InitializedPoolEvent {
     pub authority: Pubkey,
     pub pool: Pubkey,
     pub mint: Pubkey,
+    pub presale_target: u64,
     pub presale_time_limit: i64,
     pub creator_fee_basis_points: u16,
     pub vested_supply: u64,
@@ -94,11 +97,19 @@ pub struct PurchasedPresaleEvent {
 }
 
 #[event]
+pub struct CheckClaimEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub original_mint: Pubkey,
+    pub mint_elligible: u64,
+    pub lp_elligibile: u64,
+}
+
+#[event]
 pub struct ClaimRewardsEvent {
     pub payer: Pubkey,
     pub pool: Pubkey,
     pub mint_claimed: u64,
-    pub mint_elligible: u64,
     pub original_mint: Pubkey,
     pub original_mint_owner: Pubkey,
 }
