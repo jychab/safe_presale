@@ -1,4 +1,4 @@
-use crate::{error::CustomError, state::*};
+use crate::{error::CustomError, state::*, utils::U128};
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -63,6 +63,17 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
     let pool = &ctx.accounts.pool;
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let lp_elligible = purchase_receipt.lp_elligible.unwrap();
+
+    let creator_fees = U128::from(lp_elligible)
+        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
+        .and_then(|result| result.checked_div(U128::from(10000)))
+        .and_then(|result| Some(result.as_u64()))
+        .ok_or(CustomError::IntegerOverflow)?;
+
+    let amount_after_creator_fees = lp_elligible
+        .checked_sub(creator_fees)
+        .ok_or(CustomError::IntegerOverflow)?;
+
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),
@@ -70,16 +81,6 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         &[pool.bump],
     ];
     let signer = &[&pool_seed[..]];
-
-    let creator_fees = lp_elligible
-        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
-        .ok_or(CustomError::IntegerOverflow)?
-        .checked_div(10000)
-        .ok_or(CustomError::IntegerOverflow)?;
-
-    let amount_after_creator_fees = lp_elligible
-        .checked_sub(creator_fees)
-        .ok_or(CustomError::IntegerOverflow)?;
 
     transfer(
         CpiContext::new(
@@ -110,8 +111,8 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
     emit_cpi!(WithdrawLpTokenEvent {
         payer: ctx.accounts.user_wallet.key(),
         pool: pool.key(),
-        original_mint: ctx.accounts.purchase_receipt.original_mint,
-        amount_lp_withdrawn: lp_elligible,
+        original_mint: purchase_receipt.original_mint,
+        amount_lp_withdrawn: amount_after_creator_fees,
         lp_mint: pool.lp_mint.unwrap(),
     });
 

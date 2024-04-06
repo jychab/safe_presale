@@ -84,6 +84,7 @@ pub struct InitializedPoolEvent {
     pub creator_fee_basis_points: u16,
     pub vested_supply: u64,
     pub total_supply: u64,
+    pub decimal: u8,
     pub vesting_period: u64,
 }
 
@@ -93,7 +94,6 @@ pub struct PurchasedPresaleEvent {
     pub amount: u64,
     pub pool: Pubkey,
     pub original_mint: Pubkey,
-    pub liquidity_collected: u64,
 }
 
 #[event]
@@ -102,7 +102,8 @@ pub struct CheckClaimEvent {
     pub pool: Pubkey,
     pub original_mint: Pubkey,
     pub mint_elligible: u64,
-    pub lp_elligibile: u64,
+    pub lp_elligible: u64,
+    pub lp_elligible_after_fees: u64,
 }
 
 #[event]
@@ -110,6 +111,7 @@ pub struct ClaimRewardsEvent {
     pub payer: Pubkey,
     pub pool: Pubkey,
     pub mint_claimed: u64,
+    pub last_claimed_at: i64,
     pub original_mint: Pubkey,
     pub original_mint_owner: Pubkey,
 }

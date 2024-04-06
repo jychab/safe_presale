@@ -120,7 +120,10 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     let associated_token_program = ctx.accounts.associated_token_program.as_ref();
     let token_program = ctx.accounts.token_program.as_ref();
     let remaining_accounts = ctx.remaining_accounts.as_ref();
-    let amount_coin_in_pool = pool.total_supply.checked_sub(pool.vested_supply).unwrap();
+    let amount_coin_in_pool = pool
+        .total_supply
+        .checked_sub(pool.vested_supply)
+        .ok_or(CustomError::IntegerOverflow)?;
     let amount_pc_in_pool = pool.liquidity_collected;
 
     transfer_amount(
@@ -140,10 +143,10 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         signer,
         amount_pc_in_pool,
     )?;
-    let creator_fees = amount_pc_in_pool
+    let creator_fees = U128::from(amount_pc_in_pool)
         .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
-        .ok_or(CustomError::IntegerOverflow)?
-        .checked_div(10000)
+        .and_then(|result| result.checked_div(U128::from(10000)))
+        .and_then(|result| Some(result.as_u64()))
         .ok_or(CustomError::IntegerOverflow)?;
 
     let amount_after_creator_fees = amount_pc_in_pool
@@ -220,7 +223,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         authority: pool.authority,
         pool: pool.key(),
         amount_coin: amount_coin_in_pool,
-        amount_pc: amount_pc_in_pool,
+        amount_pc: amount_after_creator_fees,
         amount_lp_received: user_lp_amount,
         lp_mint: pool.lp_mint.unwrap(),
         mint: pool.mint,

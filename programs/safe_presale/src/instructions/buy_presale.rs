@@ -109,7 +109,6 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         amount: amount,
         pool: pool.key(),
         original_mint: ctx.accounts.nft.key(),
-        liquidity_collected: pool.liquidity_collected,
     });
 
     Ok(())

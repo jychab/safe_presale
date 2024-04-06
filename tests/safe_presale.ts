@@ -220,8 +220,8 @@ describe("Safe Presale", () => {
       decimal: 5,
       uri: "https://www.madlads.com/mad_lads_logo.svg",
     };
-    const totalSupply = new BN(10000000);
-    const vestedSupply = new BN(5000000);
+    const totalSupply = new BN(1000000000);
+    const vestedSupply = new BN(500000000);
     const vestingPeriod = new BN(3 * 24 * 60 * 60); //3days in seconds
     const maxPresaleTime = new BN(3 * 24 * 60 * 60);
 
@@ -287,11 +287,13 @@ describe("Safe Presale", () => {
         "Wrong reward mint"
       );
       assert(
-        data.totalSupply.toNumber() === totalSupply.toNumber(),
+        data.totalSupply.toNumber() ===
+          totalSupply.toNumber() * 10 ** rewardMint.decimal,
         "Wrong total supply"
       );
       assert(
-        data.vestedSupply.toNumber() === vestedSupply.toNumber(),
+        data.vestedSupply.toNumber() ===
+          vestedSupply.toNumber() * 10 ** rewardMint.decimal,
         "Wrong vested supply"
       );
       assert(

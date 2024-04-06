@@ -1,6 +1,7 @@
 use crate::error::CustomError;
 use crate::state::*;
 use crate::utils::Calculator;
+use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::token::mint_to;
@@ -8,7 +9,6 @@ use anchor_spl::token::Mint;
 use anchor_spl::token::MintTo;
 use anchor_spl::token::Token;
 use anchor_spl::token::TokenAccount;
-use std::cmp::min;
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -70,31 +70,34 @@ pub fn handler(
     let vesting_started_at = pool.vesting_started_at.unwrap();
     let vesting_period_end = pool.vesting_period_end.unwrap();
     let vesting_period = pool.vesting_period;
-
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let mint_elligible_to_claim = purchase_receipt.mint_elligible.unwrap();
 
-    if let Some(last_claimed_at) = purchase_receipt.last_claimed_at {
-        if last_claimed_at > vesting_period_end {
-            return Err(error!(CustomError::MaximumAmountClaimed));
+    let current_time = Clock::get()?.unix_timestamp;
+
+    let mint_claimable ;
+    if current_time >= vesting_period_end {
+        if mint_elligible_to_claim == purchase_receipt.mint_claimed {
+            return Err(error!(CustomError::MaximumAmountClaimed))
         }
+        mint_claimable = mint_elligible_to_claim.checked_sub(purchase_receipt.mint_claimed).ok_or(CustomError::IntegerOverflow)?;
+    }else{
+        // all using unix_timestamp
+        let last_claimed_at = purchase_receipt.last_claimed_at.unwrap_or(vesting_started_at);
+        
+        let duration_since_last_claimed = Calculator::to_u64_from_i64(current_time.checked_sub(last_claimed_at).ok_or(CustomError::IntegerOverflow)?)?;
+        mint_claimable = U128::from(duration_since_last_claimed)
+            .checked_mul(U128::from(mint_elligible_to_claim))
+            .and_then(|result| result.checked_div(vesting_period.try_into().unwrap()))
+            .and_then(|result| Some(result.as_u64()))
+            .ok_or(CustomError::IntegerOverflow)?;
     }
 
-    let current_time = Clock::get()?.unix_timestamp;
-    //update last_claimed_at
-    purchase_receipt.last_claimed_at =  Some(current_time);
-
-
-    // all using unix_timestamp
-    let duration_since_last_claimed = Calculator::to_u64_from_i64(min(current_time, vesting_period_end).checked_sub(purchase_receipt.last_claimed_at.unwrap_or(vesting_started_at)).ok_or(CustomError::IntegerOverflow)?)?;
-    let mint_claimable = duration_since_last_claimed
-            .checked_mul(mint_elligible_to_claim)
-            .ok_or(CustomError::IntegerOverflow)?
-            .checked_div(vesting_period)
-            .ok_or(CustomError::IntegerOverflow)?;
 
     //update mint_claimed
     purchase_receipt.mint_claimed = purchase_receipt.mint_claimed.checked_add(mint_claimable).ok_or(CustomError::IntegerOverflow)?;
+    //update last_claimed_at
+    purchase_receipt.last_claimed_at =  Some(current_time);
 
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
@@ -103,6 +106,7 @@ pub fn handler(
             &[pool.bump],
         ];
     let signer = &[&pool_seed[..]];
+
     mint_to(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(), 
@@ -122,6 +126,7 @@ pub fn handler(
         payer: ctx.accounts.payer.key(),
         pool: ctx.accounts.pool.key(),
         mint_claimed: mint_claimable,
+        last_claimed_at: purchase_receipt.last_claimed_at.unwrap(),
         original_mint: ctx.accounts.nft.key(),
         original_mint_owner: ctx.accounts.nft_owner.key(),
     });

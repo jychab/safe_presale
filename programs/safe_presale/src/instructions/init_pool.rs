@@ -20,7 +20,7 @@ pub struct InitPoolArgs {
 
 #[event_cpi]
 #[derive(Accounts)]
-#[instruction(params:InitPoolArgs)]
+#[instruction(args:InitPoolArgs)]
 pub struct InitPoolCtx<'info> {
     #[account(
         init,
@@ -36,7 +36,7 @@ pub struct InitPoolCtx<'info> {
         payer = payer,
         seeds = [MINT_PREFIX.as_bytes(), identifier.count.to_le_bytes().as_ref()],
         bump,
-        mint::decimals = params.decimals,
+        mint::decimals = args.decimals,
         mint::authority = pool,
     )]
     pub reward_mint: Box<Account<'info, Mint>>,
@@ -87,8 +87,8 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     if args.creator_fee_basis_points > 10000 {
         return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
     }
-    pool.total_supply = args.total_supply;
-    pool.vested_supply = args.vested_supply;
+    pool.total_supply = args.total_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
+    pool.vested_supply = args.vested_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
     pool.presale_target = args.presale_target;
@@ -113,9 +113,10 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     let cpi_program = ctx.accounts.token_program.to_account_info();
     let cpi_context = CpiContext::new(cpi_program, cpi_accounts)
         .with_signer(signer);
+    let amount_to_mint = pool.total_supply.checked_sub(pool.vested_supply).ok_or(CustomError::IntegerOverflow)?;
     token::mint_to(
         cpi_context,
-        pool.total_supply - pool.vested_supply
+        amount_to_mint
     )?;
 
     CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
@@ -143,6 +144,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         authority: pool.authority,
         pool: pool.key(),
         mint: pool.mint,
+        decimal: args.decimals,
         presale_target: pool.presale_target,
         presale_time_limit: pool.presale_time_limit,
         creator_fee_basis_points: pool.creator_fee_basis_points,
