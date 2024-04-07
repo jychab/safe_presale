@@ -5,15 +5,14 @@ use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
 use anchor_spl::associated_token;
-use anchor_spl::associated_token::AssociatedToken;
 use anchor_spl::associated_token::Create;
-use anchor_spl::token::close_account;
-use anchor_spl::token::transfer;
-use anchor_spl::token::CloseAccount;
-use anchor_spl::token::Token;
-use anchor_spl::token::Transfer;
-use anchor_spl::token_interface::Mint;
-use anchor_spl::token_interface::TokenAccount;
+use anchor_spl::{
+    associated_token::AssociatedToken,
+    token_interface::{
+        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+        TransferChecked,
+    },
+};
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -66,7 +65,7 @@ pub struct LaunchTokenAmmCtx<'info> {
     /// Program to create the position manager state account
     pub system_program: Program<'info, System>,
     /// Program to create mint account and mint tokens
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     /// Program to create an ATA for receiving position NFT
     pub associated_token_program: Program<'info, AssociatedToken>,
     /// CHECK: Checked by cpi
@@ -131,8 +130,10 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         pool_token_coin.to_account_info(),
         user_token_coin.to_account_info(),
         pool.to_account_info(),
+        ctx.accounts.amm_coin_mint.to_account_info(),
         signer,
         amount_coin_in_pool,
+        ctx.accounts.amm_coin_mint.decimals,
     )?;
 
     transfer_amount(
@@ -140,8 +141,10 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         pool_token_pc.to_account_info(),
         user_token_pc.to_account_info(),
         pool.to_account_info(),
+        ctx.accounts.amm_pc_mint.to_account_info(),
         signer,
         amount_pc_in_pool,
+        ctx.accounts.amm_pc_mint.decimals,
     )?;
     let creator_fees = U128::from(amount_pc_in_pool)
         .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
@@ -208,6 +211,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_token_lp.to_account_info(),
         ctx.accounts.pool_token_lp.to_account_info(),
         user_lp_amount,
+        ctx.accounts.amm_coin_mint.decimals,
     )?;
 
     close_account(CpiContext::new(
@@ -244,6 +248,7 @@ fn transfer_lp_token<'info>(
     user_token_lp: AccountInfo<'info>,
     pool_token_lp: AccountInfo<'info>,
     amount: u64,
+    decimal: u8,
 ) -> Result<()> {
     associated_token::create(CpiContext::new(
         associated_token_program.to_account_info(),
@@ -256,16 +261,18 @@ fn transfer_lp_token<'info>(
             token_program: token_program.to_account_info(),
         },
     ))?;
-    transfer(
+    transfer_checked(
         CpiContext::new(
             token_program.to_account_info(),
-            Transfer {
+            TransferChecked {
+                mint: mint.to_account_info(),
                 from: user_token_lp.to_account_info(),
                 to: pool_token_lp.to_account_info(),
                 authority: user_wallet.to_account_info(),
             },
         ),
         amount,
+        decimal,
     )?;
     Ok(())
 }
@@ -375,13 +382,16 @@ fn transfer_amount<'info>(
     from: AccountInfo<'info>,
     to: AccountInfo<'info>,
     authority: AccountInfo<'info>,
+    mint: AccountInfo<'info>,
     signer: &[&[&[u8]]; 1],
     amount_max: u64,
+    decimal: u8,
 ) -> Result<()> {
-    transfer(
+    transfer_checked(
         CpiContext::new(
             token_program,
-            Transfer {
+            TransferChecked {
+                mint,
                 from,
                 to,
                 authority,
@@ -389,6 +399,7 @@ fn transfer_amount<'info>(
         )
         .with_signer(signer),
         amount_max,
+        decimal,
     )?;
     Ok(())
 }

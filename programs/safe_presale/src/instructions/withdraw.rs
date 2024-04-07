@@ -2,8 +2,10 @@ use crate::{error::CustomError, state::*};
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{close_account, transfer, CloseAccount, Token, Transfer},
-    token_interface::{Mint, TokenAccount},
+    token_interface::{
+        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
+        TransferChecked,
+    },
 };
 
 #[event_cpi]
@@ -49,7 +51,7 @@ pub struct Withdraw<'info> {
     /// Program to create the position manager state account
     pub system_program: Program<'info, System>,
     /// Program to create mint account and mint tokens
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     /// Program to create an ATA for receiving position NFT
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -64,10 +66,11 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
     ];
     let signer = &[&pool_seed[..]];
 
-    transfer(
+    transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            TransferChecked {
+                mint: ctx.accounts.wsol.to_account_info(),
                 from: ctx.accounts.pool_token_wsol.to_account_info(),
                 to: ctx.accounts.user_token_wsol.to_account_info(),
                 authority: pool.to_account_info(),
@@ -75,6 +78,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
         )
         .with_signer(signer),
         purchase_receipt.amount,
+        ctx.accounts.wsol.decimals,
     )?;
 
     close_account(CpiContext::new(

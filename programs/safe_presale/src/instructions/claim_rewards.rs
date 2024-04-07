@@ -3,12 +3,7 @@ use crate::state::*;
 use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
-use anchor_spl::associated_token::AssociatedToken;
-use anchor_spl::token::mint_to;
-use anchor_spl::token::Mint;
-use anchor_spl::token::MintTo;
-use anchor_spl::token::Token;
-use anchor_spl::token::TokenAccount;
+use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, MintTo, mint_to, TokenAccount, TokenInterface}};
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -31,7 +26,7 @@ pub struct ClaimRewardsCtx<'info> {
         constraint = nft_owner_nft_token_account.mint == nft.key(),
         constraint = nft_owner_nft_token_account.owner == nft_owner.key()
     )]
-    pub nft_owner_nft_token_account:  Box<Account<'info, TokenAccount>>,
+    pub nft_owner_nft_token_account:  Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         init_if_needed,
@@ -39,7 +34,7 @@ pub struct ClaimRewardsCtx<'info> {
         associated_token::mint = reward_mint,
         associated_token::authority = nft_owner,
     )]
-    pub nft_owner_reward_mint_token_account: Box<Account<'info, TokenAccount>>,
+    pub nft_owner_reward_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     ///CHECK: Contraint is checked by other accounts
     pub nft_owner: AccountInfo<'info>,
@@ -47,19 +42,19 @@ pub struct ClaimRewardsCtx<'info> {
     #[account(
         constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
     )]
-    pub nft: Box<Account<'info, Mint>>,
+    pub nft: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         mut, 
         constraint = reward_mint.key() == pool.mint @ CustomError::InvalidRewardMint
     )]
-    pub reward_mint: Box<Account<'info, Mint>>,
+    pub reward_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     pub system_program: Program<'info, System>,
 }
 

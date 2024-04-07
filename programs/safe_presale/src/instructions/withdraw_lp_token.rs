@@ -1,10 +1,6 @@
 use crate::{error::CustomError, state::*, utils::U128};
 use anchor_lang::prelude::*;
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token::{transfer, Token, Transfer},
-    token_interface::{Mint, TokenAccount},
-};
+use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, TransferChecked, transfer_checked, TokenAccount, TokenInterface}};
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -55,7 +51,7 @@ pub struct WithdrawPoolLpToken<'info> {
     /// Program to create the position manager state account
     pub system_program: Program<'info, System>,
     /// Program to create mint account and mint tokens
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
     /// Program to create an ATA for receiving position NFT
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
@@ -82,10 +78,11 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
     ];
     let signer = &[&pool_seed[..]];
 
-    transfer(
+    transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            TransferChecked {
+                mint: ctx.accounts.lp_mint.to_account_info(),
                 from: ctx.accounts.pool_token_lp.to_account_info(),
                 to: ctx.accounts.pool_authority_token_lp.to_account_info(),
                 authority: pool.to_account_info(),
@@ -93,12 +90,14 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         )
         .with_signer(signer),
         creator_fees,
+        ctx.accounts.lp_mint.decimals,
     )?;
 
-    transfer(
+    transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
+            TransferChecked {
+                mint: ctx.accounts.lp_mint.to_account_info(),
                 from: ctx.accounts.pool_token_lp.to_account_info(),
                 to: ctx.accounts.user_token_lp.to_account_info(),
                 authority: pool.to_account_info(),
@@ -106,6 +105,7 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         )
         .with_signer(signer),
         amount_after_creator_fees,
+        ctx.accounts.lp_mint.decimals
     )?;
 
     emit_cpi!(WithdrawLpTokenEvent {

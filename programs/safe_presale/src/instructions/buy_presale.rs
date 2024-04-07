@@ -5,7 +5,7 @@ use anchor_lang::{
 };
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token::{sync_native, Mint, SyncNative, Token, TokenAccount},
+    token_interface::{sync_native, Mint, SyncNative, TokenAccount, TokenInterface},
 };
 
 #[event_cpi]
@@ -32,17 +32,17 @@ pub struct BuyPresaleCtx<'info> {
         associated_token::mint = wsol_mint,
         associated_token::authority = pool
     )]
-    pub pool_wsol_token_account: Box<Account<'info, TokenAccount>>,
+    pub pool_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         address = public_keys::wsol::id()
     )]
-    pub wsol_mint: Box<Account<'info, Mint>>,
+    pub wsol_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
         constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
     )]
-    pub nft: Box<Account<'info, Mint>>,
+    pub nft: Box<InterfaceAccount<'info, Mint>>,
 
     // To revisit this again due to multiple nft standards popping up
     // #[account(
@@ -57,7 +57,7 @@ pub struct BuyPresaleCtx<'info> {
 
     pub system_program: Program<'info, System>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
 }

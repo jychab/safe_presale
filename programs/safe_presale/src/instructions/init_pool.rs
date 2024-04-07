@@ -1,7 +1,6 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, token::{self, Mint, Token, TokenAccount}};
+use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, MintTo, mint_to, TokenAccount, TokenInterface}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
-
 use crate::{error::CustomError, state::{Identifier, InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
@@ -39,7 +38,7 @@ pub struct InitPoolCtx<'info> {
         mint::decimals = args.decimals,
         mint::authority = pool,
     )]
-    pub reward_mint: Box<Account<'info, Mint>>,
+    pub reward_mint: Box<InterfaceAccount<'info, Mint>>,
 
     /// CHECK: Checked by cpi
     #[account(mut)]
@@ -47,11 +46,11 @@ pub struct InitPoolCtx<'info> {
 
     #[account( 
         init_if_needed,
-        payer = payer,
+        payer = payer,  
         associated_token::mint = reward_mint,
         associated_token::authority = pool,
     )]
-    pub pool_reward_mint_ata: Box<Account<'info, TokenAccount>>,
+    pub pool_reward_mint_ata: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(mut)]
     pub identifier: Account<'info, Identifier>,
@@ -62,7 +61,7 @@ pub struct InitPoolCtx<'info> {
     /// CHECK: This is not dangerous because we don't read or write from this account
     pub system_program: Program<'info, System>,
 
-    pub token_program: Program<'info, Token>,
+    pub token_program: Interface<'info, TokenInterface>,
 
     pub associated_token_program: Program<'info, AssociatedToken>,
 
@@ -102,7 +101,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     let signer = &[&seeds[..]];
 
     //mint remaining token to pool
-    let cpi_accounts = token::MintTo {
+    let cpi_accounts = MintTo {
         mint: ctx.accounts.reward_mint.to_account_info(),
         to: ctx
             .accounts
@@ -114,7 +113,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     let cpi_context = CpiContext::new(cpi_program, cpi_accounts)
         .with_signer(signer);
     let amount_to_mint = pool.total_supply.checked_sub(pool.vested_supply).ok_or(CustomError::IntegerOverflow)?;
-    token::mint_to(
+    mint_to(
         cpi_context,
         amount_to_mint
     )?;
