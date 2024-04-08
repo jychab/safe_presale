@@ -14,7 +14,7 @@ pub struct CheckClaimCtx<'info> {
 
     #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
-        constraint = !pool.allow_purchase @CustomError::PresaleIsStillOngoing
+        constraint = pool.launched @CustomError::PresaleIsStillOngoing
     )]
     pub pool: Box<Account<'info, Pool>>,
 

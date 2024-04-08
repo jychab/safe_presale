@@ -18,15 +18,15 @@ use anchor_spl::{
 #[derive(Accounts)]
 pub struct LaunchTokenAmmCtx<'info> {
     #[account(mut,
-        constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleTimeLimtExceeded,
-        constraint = pool.liquidity_collected >= pool.presale_target @CustomError::PresaleTargetNotMet,
+        constraint = pool.presale_target <= pool.liquidity_collected @CustomError::PresaleTargetNotMet,
+        constraint = !pool.launched @CustomError::TokenHasLaunched,
         constraint = pool.mint == amm_coin_mint.key(),
-        constraint = pool.authority == user_wallet.key(),
-        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
     )]
     pub pool: Box<Account<'info, Pool>>,
     /// Pays to mint the position
-    #[account(mut)]
+    #[account(mut,
+        constraint = pool.authority == user_wallet.key(),
+    )]
     pub user_wallet: Signer<'info>,
     #[account(
         init_if_needed,
@@ -88,8 +88,15 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     open_time: u64,
 ) -> Result<()> {
     let current_time = Clock::get()?.unix_timestamp;
+    let grace_period = 7 * 24 * 60 * 60;
     let pool = &mut ctx.accounts.pool;
-    pool.allow_purchase = false;
+    if current_time < pool.presale_time_limit {
+        return Err(error!(CustomError::UnauthorizedAtCurrentTime));
+    }
+    if pool.presale_time_limit + grace_period < current_time {
+        return Err(error!(CustomError::PoolHasExpired));
+    }
+    pool.launched = true;
     pool.vesting_started_at = Some(current_time);
     pool.vesting_period_end = Some(
         current_time
@@ -105,9 +112,8 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         &[pool.bump],
     ];
     let signer = &[&pool_seed[..]];
-
-    let pool_token_coin = ctx.accounts.pool_token_coin.as_ref();
     let pool_token_pc = ctx.accounts.pool_token_pc.as_ref();
+    let pool_token_coin = ctx.accounts.pool_token_coin.as_ref();
     let user_token_coin = ctx.accounts.user_token_coin.as_ref();
     let user_token_pc = ctx.accounts.user_token_pc.as_ref();
     let user_token_lp = ctx.accounts.user_token_lp.as_ref();
@@ -135,7 +141,6 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         amount_coin_in_pool,
         ctx.accounts.amm_coin_mint.decimals,
     )?;
-
     transfer_amount(
         token_program.to_account_info(),
         pool_token_pc.to_account_info(),
@@ -146,6 +151,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         amount_pc_in_pool,
         ctx.accounts.amm_pc_mint.decimals,
     )?;
+
     let creator_fees = U128::from(amount_pc_in_pool)
         .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
         .and_then(|result| result.checked_div(U128::from(10000)))
@@ -213,7 +219,6 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_lp_amount,
         ctx.accounts.amm_coin_mint.decimals,
     )?;
-
     close_account(CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         CloseAccount {
@@ -224,13 +229,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     ))?;
 
     emit_cpi!(LaunchTokenAmmEvent {
-        authority: pool.authority,
+        payer: user_wallet.key(),
         pool: pool.key(),
         amount_coin: amount_coin_in_pool,
         amount_pc: amount_after_creator_fees,
         amount_lp_received: user_lp_amount,
         lp_mint: pool.lp_mint.unwrap(),
-        mint: pool.mint,
         vesting_started_at: pool.vesting_started_at.unwrap(),
         vesting_ending_at: pool.vesting_period_end.unwrap(),
     });

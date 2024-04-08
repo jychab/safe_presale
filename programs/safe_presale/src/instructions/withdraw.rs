@@ -1,5 +1,8 @@
 use crate::{error::CustomError, state::*};
-use anchor_lang::prelude::*;
+use anchor_lang::{
+    prelude::*,
+    system_program::{transfer, Transfer},
+};
 use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{
@@ -13,33 +16,31 @@ use anchor_spl::{
 pub struct Withdraw<'info> {
     #[account(
         mut,
-        close = user_wallet,
-        constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
+        close = payer,
+        constraint = purchase_receipt.original_mint == nft.key() @ CustomError::MintNotAllowed,
         constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
     #[account(
         constraint = nft_owner_nft_token_account.amount == 1,
-        constraint = nft_owner_nft_token_account.owner == user_wallet.key(),
+        constraint = nft_owner_nft_token_account.mint == nft.key(),
+        constraint = nft_owner_nft_token_account.owner == nft_owner.key(),
     )]
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
-        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
-        constraint = pool.presale_time_limit < Clock::get()?.unix_timestamp @CustomError::UnauthorizedAtCurrentTime
+        constraint = !pool.launched @CustomError::TokenHasLaunched,
     )]
     pub pool: Box<Account<'info, Pool>>,
-    #[account(mut)]
-    pub user_wallet: Signer<'info>,
     #[account(
 		init_if_needed,
-        payer = user_wallet,
+        payer = payer,
         associated_token::mint = wsol,
-        associated_token::authority = user_wallet,
+        associated_token::authority = payer,
 	)]
-    pub user_token_wsol: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub payer_token_wsol: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
 		init_if_needed,
-        payer = user_wallet,
+        payer = payer,
         associated_token::mint = wsol,
         associated_token::authority = pool,
 	)]
@@ -48,6 +49,15 @@ pub struct Withdraw<'info> {
 		address = public_keys::wsol::id()
 	)]
     pub wsol: Box<InterfaceAccount<'info, Mint>>,
+    ///CHECK: Contraint is checked by other accounts
+    #[account(mut)]
+    pub nft_owner: AccountInfo<'info>,
+    #[account(
+        constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
+    )]
+    pub nft: Box<InterfaceAccount<'info, Mint>>,
+    #[account(mut)]
+    pub payer: Signer<'info>,
     /// Program to create the position manager state account
     pub system_program: Program<'info, System>,
     /// Program to create mint account and mint tokens
@@ -57,7 +67,19 @@ pub struct Withdraw<'info> {
 }
 pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
     let pool = &ctx.accounts.pool;
+    let current_time = Clock::get()?.unix_timestamp;
+    let grace_period = 7 * 24 * 60 * 60;
+    if current_time < pool.presale_time_limit + grace_period {
+        if current_time < pool.presale_time_limit {
+            return Err(error!(CustomError::UnauthorizedAtCurrentTime));
+        }
+        if pool.presale_target <= pool.liquidity_collected {
+            return Err(error!(CustomError::WaitingForCreatorToLaunch));
+        }
+    }
+
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
+
     let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),
@@ -72,7 +94,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
             TransferChecked {
                 mint: ctx.accounts.wsol.to_account_info(),
                 from: ctx.accounts.pool_token_wsol.to_account_info(),
-                to: ctx.accounts.user_token_wsol.to_account_info(),
+                to: ctx.accounts.payer_token_wsol.to_account_info(),
                 authority: pool.to_account_info(),
             },
         )
@@ -84,18 +106,29 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
     close_account(CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         CloseAccount {
-            account: ctx.accounts.user_token_wsol.to_account_info(),
-            destination: ctx.accounts.user_wallet.to_account_info(),
-            authority: ctx.accounts.user_wallet.to_account_info(),
+            account: ctx.accounts.payer_token_wsol.to_account_info(),
+            destination: ctx.accounts.payer.to_account_info(),
+            authority: ctx.accounts.payer.to_account_info(),
         },
     ))?;
 
+    transfer(
+        CpiContext::new(
+            ctx.accounts.system_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.payer.to_account_info(),
+                to: ctx.accounts.nft_owner.to_account_info(),
+            },
+        ),
+        purchase_receipt.amount,
+    )?;
+
     emit_cpi!(WithdrawEvent {
-        payer: ctx.accounts.user_wallet.key(),
+        payer: ctx.accounts.payer.key(),
         pool: pool.key(),
         original_mint: purchase_receipt.original_mint,
         amount_wsol_withdrawn: purchase_receipt.amount,
-        wsol_mint: ctx.accounts.wsol.key(),
+        original_mint_owner: ctx.accounts.nft_owner.key(),
     });
 
     Ok(())

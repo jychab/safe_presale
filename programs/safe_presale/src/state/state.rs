@@ -23,7 +23,7 @@ pub const MINT_PREFIX: &str = "mint";
 #[account]
 pub struct Pool {
     pub bump: u8,
-    pub allow_purchase: bool,
+    pub launched: bool,
     pub identifier: u64,
     pub authority: Pubkey,
     pub mint: Pubkey,
@@ -35,13 +35,13 @@ pub struct Pool {
     pub total_supply: u64,
     pub presale_target: u64,
     pub presale_time_limit: i64,
-    pub vesting_period: u64,
+    pub vesting_period: u32,
     pub vesting_started_at: Option<i64>,
     pub vesting_period_end: Option<i64>,
 }
 pub const POOL_PREFIX: &str = "pool";
 pub const POOL_SIZE: usize =
-    8 + 1 + 1 + 8 + 32 + 32 + 1 + 32 + 1 + 8 + 8 + 2 + 8 + 8 + 8 + 8 + 1 + 8 + 1 + 8 + 8;
+    8 + 1 + 1 + 8 + 32 + 32 + 1 + 32 + 1 + 8 + 8 + 2 + 8 + 8 + 8 + 8 + 4 + 1 + 8 + 1 + 8;
 
 #[account]
 pub struct Identifier {
@@ -85,7 +85,7 @@ pub struct InitializedPoolEvent {
     pub vested_supply: u64,
     pub total_supply: u64,
     pub decimal: u8,
-    pub vesting_period: u64,
+    pub vesting_period: u32,
 }
 
 #[event]
@@ -118,13 +118,12 @@ pub struct ClaimRewardsEvent {
 
 #[event]
 pub struct LaunchTokenAmmEvent {
-    pub authority: Pubkey,
+    pub payer: Pubkey,
     pub pool: Pubkey,
     pub amount_coin: u64,
     pub amount_pc: u64,
     pub amount_lp_received: u64,
     pub lp_mint: Pubkey,
-    pub mint: Pubkey,
     pub vesting_started_at: i64,
     pub vesting_ending_at: i64,
 }
@@ -144,5 +143,5 @@ pub struct WithdrawEvent {
     pub pool: Pubkey,
     pub original_mint: Pubkey,
     pub amount_wsol_withdrawn: u64,
-    pub wsol_mint: Pubkey,
+    pub original_mint_owner: Pubkey,
 }

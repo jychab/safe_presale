@@ -4,16 +4,18 @@ use anchor_lang::prelude::*;
 pub enum CustomError {
     #[msg("Nft is not non-fungible")]
     NftIsNotNonFungible,
-    #[msg("Unable to claim as presale is still ongoing")]
+    #[msg("Presale is still ongoing")]
     PresaleIsStillOngoing,
-    #[msg("Presale has ended!")]
-    PresaleHasEnded,
-    #[msg("Exceeded presale time limit")]
-    PresaleTimeLimtExceeded,
     #[msg("Presale target not met!")]
     PresaleTargetNotMet,
     #[msg("Token already launched")]
     TokenHasLaunched,
+    #[msg(
+        "The pool expired because the creator failed to launch it within the 7 day grace period."
+    )]
+    PoolHasExpired,
+    #[msg("Presale target is met, unable to withdraw. ")]
+    WaitingForCreatorToLaunch,
     #[msg("Conversion to u64 failed with an overflow or underflow")]
     ConversionFailure,
     #[msg("Integer Overflow Error")]
@@ -34,7 +36,7 @@ pub enum CustomError {
     InvalidRewardMint,
     #[msg("Nothing left to claim")]
     MaximumAmountClaimed,
-    #[msg("Either presale time limit has not ended or Vesting is still in progress")]
+    #[msg("Either presale or vesting is still ongoing")]
     UnauthorizedAtCurrentTime,
     #[msg("Vesting Supply larget than total supply")]
     VestingSupplyLargerThanTotalSupply,

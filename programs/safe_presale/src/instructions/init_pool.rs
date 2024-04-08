@@ -10,11 +10,11 @@ pub struct InitPoolArgs {
     pub uri: String,
     pub decimals: u8,
     pub presale_target: u64,
-    pub max_presale_time: u64,
-    pub vesting_period: u64,
+    pub max_presale_time: u32,
+    pub vesting_period: u32,
     pub vested_supply: u64,
     pub total_supply: u64,
-    pub creator_fee_basis_points: u16, 
+    pub creator_fee_basis_points: u16,
 }
 
 #[event_cpi]
@@ -71,26 +71,28 @@ pub struct InitPoolCtx<'info> {
 }
 
 pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
-    let pool = &mut ctx.accounts.pool;
-    let identifier = &mut ctx.accounts.identifier;
-    pool.allow_purchase = true;
-    pool.bump = ctx.bumps.pool;
-    pool.identifier = identifier.count;
-    pool.mint = ctx.accounts.reward_mint.key();
-    pool.authority = ctx.accounts.payer.key();
-    pool.liquidity_collected = 0;
-    pool.presale_time_limit = Clock::get()?.unix_timestamp.checked_add(args.max_presale_time.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
     if args.vested_supply > args.total_supply {
         return Err(error!(CustomError::VestingSupplyLargerThanTotalSupply))
     }
     if args.creator_fee_basis_points > 10000 {
         return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
     }
+    let pool = &mut ctx.accounts.pool;
+    let identifier = &mut ctx.accounts.identifier;
+    let current_time = Clock::get()?.unix_timestamp;
+    pool.launched = false;
+    pool.bump = ctx.bumps.pool;
+    pool.identifier = identifier.count;
+    pool.mint = ctx.accounts.reward_mint.key();
+    pool.authority = ctx.accounts.payer.key();
+    pool.liquidity_collected = 0;
     pool.total_supply = args.total_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
     pool.vested_supply = args.vested_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
+    pool.presale_time_limit = current_time.checked_add(args.max_presale_time.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
     pool.presale_target = args.presale_target;
+
 
     let pool_identifier = pool.identifier.to_le_bytes();
     let seeds = &[

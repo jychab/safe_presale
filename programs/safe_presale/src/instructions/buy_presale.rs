@@ -22,10 +22,9 @@ pub struct BuyPresaleCtx<'info> {
 
     #[account(
         mut,
-        constraint = pool.allow_purchase @CustomError::PresaleHasEnded,
+        constraint = !pool.launched @CustomError::TokenHasLaunched,
     )]
     pub pool: Box<Account<'info, Pool>>,
-
     #[account(
         init_if_needed,
         payer = payer,
@@ -38,7 +37,6 @@ pub struct BuyPresaleCtx<'info> {
         address = public_keys::wsol::id()
     )]
     pub wsol_mint: Box<InterfaceAccount<'info, Mint>>,
-
     #[account(
         constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
     )]
@@ -58,7 +56,6 @@ pub struct BuyPresaleCtx<'info> {
     pub system_program: Program<'info, System>,
 
     pub token_program: Interface<'info, TokenInterface>,
-
     pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
@@ -87,6 +84,7 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         .liquidity_collected
         .checked_add(amount)
         .ok_or(CustomError::IntegerOverflow)?;
+
     transfer(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),

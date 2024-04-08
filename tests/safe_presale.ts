@@ -30,7 +30,7 @@ import {
   getAccount,
   transfer,
 } from "@solana/spl-token";
-import { step } from "mocha-steps";
+import { step, xstep } from "mocha-steps";
 import {
   ClmmPoolInfo,
   DEVNET_PROGRAM_ID,
@@ -222,8 +222,8 @@ describe("Safe Presale", () => {
     };
     const totalSupply = new BN(1000000000);
     const vestedSupply = new BN(500000000);
-    const vestingPeriod = new BN(3 * 24 * 60 * 60); //3days in seconds
-    const maxPresaleTime = new BN(3 * 24 * 60 * 60);
+    const vestingPeriod = 3 * 24 * 60 * 60; //3days in seconds
+    const maxPresaleTime = 1; // in seconds
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -269,7 +269,7 @@ describe("Safe Presale", () => {
         .signers([toWeb3JsKeypair(signer)])
         .rpc();
       const data = await program.account.pool.fetch(poolId);
-      assert(data.allowPurchase === true, "Not allowed for purchase");
+      assert(data.launched === false, "Not allowed for purchase");
       assert(
         data.authority.toBase58() === signer.publicKey.toString(),
         "Wrong authority"
@@ -296,10 +296,7 @@ describe("Safe Presale", () => {
           vestedSupply.toNumber() * 10 ** rewardMint.decimal,
         "Wrong vested supply"
       );
-      assert(
-        data.vestingPeriod.toNumber() === vestingPeriod.toNumber(),
-        "Wrong vesting period"
-      );
+      assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
       assert(data.vestingStartedAt === null, "Vesting should not have started");
       assert(data.vestingPeriodEnd === null, "Vesting should not have ended");
     } catch (e) {
@@ -414,8 +411,69 @@ describe("Safe Presale", () => {
       "Amount is not equal"
     );
   });
+  step("Random Person Create Market using your token", async () => {
+    try {
+      const randomPayer = Keypair.generate();
+      const ix = SystemProgram.transfer({
+        fromPubkey: toWeb3JsPublicKey(signer.publicKey),
+        toPubkey: randomPayer.publicKey,
+        lamports: 3 * LAMPORTS_PER_SOL,
+      });
+      await sendAndConfirmTransaction(
+        program.provider.connection,
+        new Transaction().add(ix),
+        [toWeb3JsKeypair(signer)]
+      );
+      const { innerTransactions, address } =
+        await MarketV2.makeCreateMarketInstructionSimple({
+          connection: program.provider.connection,
+          wallet: randomPayer.publicKey,
+          baseInfo: {
+            mint: rewardMint.mint,
+            decimals: rewardMint.decimal,
+          },
+          quoteInfo: {
+            mint: new PublicKey(WSOL.mint),
+            decimals: WSOL.decimals,
+          },
+          lotSize: 1,
+          tickSize: 0.000001,
+          dexProgramId: DEVNET_PROGRAM_ID.OPENBOOK_MARKET,
+          makeTxVersion: TxVersion.LEGACY,
+        });
+      const txs = await buildSimpleTransaction({
+        connection: program.provider.connection,
+        makeTxVersion: TxVersion.LEGACY,
+        payer: randomPayer.publicKey,
+        innerTransactions,
+      });
+      for (let tx of txs) {
+        (tx as Transaction).sign(randomPayer);
+        const rawTransaction = tx.serialize();
+        const txid: TransactionSignature =
+          await program.provider.connection.sendRawTransaction(rawTransaction, {
+            skipPreflight: true,
+          });
+        const confirmation =
+          await program.provider.connection.confirmTransaction(txid);
+        if (confirmation.value.err) {
+          console.error(JSON.stringify(confirmation.value.err.valueOf()));
+          throw Error("Insufficient SOL");
+        }
+      }
+      const accountInfo = await program.provider.connection.getAccountInfo(
+        randomPayer.publicKey
+      );
+      console.log(
+        (3 * LAMPORTS_PER_SOL - accountInfo.lamports) / LAMPORTS_PER_SOL
+      );
+      ammInfo = address;
+    } catch (e) {
+      console.log(e);
+    }
+  });
 
-  step("Create Market for AMM", async () => {
+  xstep("Create Market for AMM ", async () => {
     try {
       const { innerTransactions, address } =
         await MarketV2.makeCreateMarketInstructionSimple({
@@ -454,7 +512,6 @@ describe("Safe Presale", () => {
           throw Error("Insufficient SOL");
         }
       }
-      ammInfo = address;
     } catch (e) {
       console.log(e);
     }
@@ -534,8 +591,8 @@ describe("Safe Presale", () => {
           userTokenCoin: userTokenCoin,
           userTokenPc: userTokenPc,
           userTokenLp: userTokenLp,
-          poolTokenCoin: poolTokenCoin,
           poolTokenPc: poolTokenPc,
+          poolTokenCoin: poolTokenCoin,
           poolTokenLp: poolTokenLp,
           rent: RENT_PROGRAM_ID,
           systemProgram: SYSTEM_PROGRAM_ID,
