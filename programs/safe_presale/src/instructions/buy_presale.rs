@@ -7,7 +7,6 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{sync_native, Mint, SyncNative, TokenAccount, TokenInterface},
 };
-
 #[event_cpi]
 #[derive(Accounts)]
 pub struct BuyPresaleCtx<'info> {
@@ -42,14 +41,6 @@ pub struct BuyPresaleCtx<'info> {
     )]
     pub nft: Box<InterfaceAccount<'info, Mint>>,
 
-    // To revisit this again due to multiple nft standards popping up
-    // #[account(
-    //     seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
-    //     bump,
-    //     seeds::program = mpl_token_metadata::ID
-    // )]
-    // /// CHECK: This is not dangerous because we don't read or write from this account
-    // pub nft_metadata: AccountInfo<'info>,
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -63,6 +54,7 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
     if amount == 0 {
         return Err(error!(CustomError::AmountPurchasedIsZero));
     }
+
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool = &mut ctx.accounts.pool;
 

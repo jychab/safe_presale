@@ -4,6 +4,8 @@ use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, MintTo, mint_to, TokenAccount, TokenInterface}};
+use mpl_token_metadata::accounts::Metadata;
+use state::public_keys::collection;
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -45,6 +47,14 @@ pub struct ClaimRewardsCtx<'info> {
     pub nft: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(
+        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
+        bump,
+        seeds::program = mpl_token_metadata::ID
+    )]
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub nft_metadata: AccountInfo<'info>,
+
+    #[account(
         mut, 
         constraint = reward_mint.key() == pool.mint @ CustomError::InvalidRewardMint
     )]
@@ -61,6 +71,33 @@ pub struct ClaimRewardsCtx<'info> {
 pub fn handler(
     ctx: Context<ClaimRewardsCtx>,
 ) -> Result<()> {
+    let mut allowed = ctx.accounts.nft_owner.key() == ctx.accounts.payer.key();
+    if !ctx.accounts.nft_metadata.data_is_empty() {
+        let mint_metadata_data = ctx
+            .accounts
+            .nft_metadata
+            .try_borrow_mut_data()
+            .expect("Failed to borrow data");
+        if ctx.accounts.nft_metadata.to_account_info().owner.key() != mpl_token_metadata::ID {
+            return Err(error!(CustomError::InvalidMintMetadataOwner));
+        }
+        let original_mint_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
+            .expect("Failed to deserialize metadata");
+        if original_mint_metadata.mint != ctx.accounts.nft.key() {
+            return Err(error!(CustomError::InvalidMintMetadata));
+        }
+
+        if original_mint_metadata.collection.is_some() {
+            let collection = original_mint_metadata.collection.unwrap();
+            if collection.verified && &collection.key == &collection::id() && ctx.accounts.nft_owner_nft_token_account.is_frozen(){ // only allow staked nfts to do auto withdrawal
+                allowed = true;
+            }
+        }
+    }
+    if !allowed {
+        return Err(error!(CustomError::InvalidSigner));
+    }
+
     let pool = &ctx.accounts.pool;
     let vesting_started_at = pool.vesting_started_at.unwrap();
     let vesting_period_end = pool.vesting_period_end.unwrap();
@@ -69,7 +106,6 @@ pub fn handler(
     let mint_elligible_to_claim = purchase_receipt.mint_elligible.unwrap();
 
     let current_time = Clock::get()?.unix_timestamp;
-
     let mint_claimable ;
     if current_time >= vesting_period_end {
         if mint_elligible_to_claim == purchase_receipt.mint_claimed {

@@ -16,6 +16,10 @@ pub mod public_keys {
     pub mod wsol {
         anchor_lang::declare_id!("So11111111111111111111111111111111111111112");
     }
+
+    pub mod collection {
+        anchor_lang::declare_id!("3gb8ETqmiobYiT4k8dpfRo9RemhkfdF82tZWzaXcZkov");
+    }
 }
 
 pub const MINT_PREFIX: &str = "mint";

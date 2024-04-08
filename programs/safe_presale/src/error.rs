@@ -48,4 +48,6 @@ pub enum CustomError {
     CheckClaimFirstBeforeClaiming,
     #[msg("Claim Amount is already updated")]
     ClaimedAlreadyChecked,
+    #[msg("Signer must be owner of nft")]
+    InvalidSigner,
 }

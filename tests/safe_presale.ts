@@ -1,11 +1,21 @@
 import { SafePresale } from "../target/types/safe_presale";
 import {
   MPL_TOKEN_METADATA_PROGRAM_ID,
+  TokenStandard,
+  createNft,
+  delegateStandardV1,
   findMasterEditionPda,
   findMetadataPda,
+  lockV1,
   mplTokenMetadata,
+  verifyCollectionV1,
 } from "@metaplex-foundation/mpl-token-metadata";
-import { keypairIdentity, publicKey } from "@metaplex-foundation/umi";
+import {
+  generateSigner,
+  keypairIdentity,
+  percentAmount,
+  publicKey,
+} from "@metaplex-foundation/umi";
 
 import { createUmi } from "@metaplex-foundation/umi-bundle-defaults";
 import {
@@ -21,6 +31,8 @@ import {
   sendAndConfirmTransaction,
 } from "@solana/web3.js";
 import {
+  fromWeb3JsKeypair,
+  fromWeb3JsPublicKey,
   toWeb3JsKeypair,
   toWeb3JsPublicKey,
 } from "@metaplex-foundation/umi-web3js-adapters";
@@ -97,6 +109,7 @@ describe("Safe Presale", () => {
   // NFTs. These are the two mad lads for the tests.
   //
   let nftA: {
+    tokenAddress: PublicKey;
     mintAddress: PublicKey;
     masterEditionAddress: PublicKey;
     metadataAddress: PublicKey;
@@ -115,62 +128,82 @@ describe("Safe Presale", () => {
   step(
     "Setup: creates one nft, verified as part of the same collection",
     async () => {
-      //   let madLadCollection = generateSigner(umi);
-      //   await createNft(umi, {
-      //     mint: madLadCollection,
-      //     name: "Mad Lad Collection",
-      //     uri: "https://example.com/my-collection.json",
-      //     sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
-      //     creators: [{ address: signer.publicKey, verified: true, share: 100 }],
-      //     isCollection: true,
-      //   }).sendAndConfirm(umi);
+      let madLadCollection = generateSigner(umi);
+      await createNft(umi, {
+        mint: madLadCollection,
+        name: "Mad Lad Collection",
+        uri: "https://example.com/my-collection.json",
+        sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
+        creators: [{ address: signer.publicKey, verified: true, share: 100 }],
+        isCollection: true,
+      }).sendAndConfirm(umi);
       collection = {
-        mintAddress: new PublicKey(
-          "3gb8ETqmiobYiT4k8dpfRo9RemhkfdF82tZWzaXcZkov"
-        ),
+        mintAddress: new PublicKey(madLadCollection.publicKey),
         masterEditionAddress: toWeb3JsPublicKey(
           findMasterEditionPda(umi, {
-            mint: publicKey("3gb8ETqmiobYiT4k8dpfRo9RemhkfdF82tZWzaXcZkov"),
+            mint: madLadCollection.publicKey,
           })[0]
         ),
         metadataAddress: toWeb3JsPublicKey(
           findMetadataPda(umi, {
-            mint: publicKey("3gb8ETqmiobYiT4k8dpfRo9RemhkfdF82tZWzaXcZkov"),
+            mint: madLadCollection.publicKey,
           })[0]
         ),
       };
-      //   let madlad1 = generateSigner(umi);
-      //   await createNft(umi, {
-      //     mint: madlad1,
-      //     name: "MadLad 1",
-      //     uri: "https://arweave.net/my-content-hash",
-      //     sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
-      //     isMutable: true,
-      //     collection: {
-      //       key: madLadCollection.publicKey,
-      //       verified: false,
-      //     },
-      //   }).sendAndConfirm(umi);
+      let madlad1 = generateSigner(umi);
+      await createNft(umi, {
+        mint: madlad1,
+        name: "MadLad 1",
+        uri: "https://arweave.net/my-content-hash",
+        sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
+        isMutable: true,
+        collection: {
+          key: madLadCollection.publicKey,
+          verified: false,
+        },
+      }).sendAndConfirm(umi);
       nftA = {
-        mintAddress: new PublicKey(
-          "BbsGAmRWneqgdnk9NEpD48oBMPkziGrdeqN4FtRcRD94"
+        mintAddress: new PublicKey(madlad1.publicKey),
+        tokenAddress: getAssociatedTokenAddressSync(
+          toWeb3JsPublicKey(madlad1.publicKey),
+          toWeb3JsPublicKey(signer.publicKey),
+          true
         ),
         masterEditionAddress: toWeb3JsPublicKey(
           findMasterEditionPda(umi, {
-            mint: publicKey("BbsGAmRWneqgdnk9NEpD48oBMPkziGrdeqN4FtRcRD94"),
+            mint: madlad1.publicKey,
           })[0]
         ),
         metadataAddress: toWeb3JsPublicKey(
           findMetadataPda(umi, {
-            mint: publicKey("BbsGAmRWneqgdnk9NEpD48oBMPkziGrdeqN4FtRcRD94"),
+            mint: madlad1.publicKey,
           })[0]
         ),
       };
-      //   await verifyCollectionV1(umi, {
-      //     metadata: findMetadataPda(umi, { mint: madlad1.publicKey }),
-      //     collectionMint: madLadCollection.publicKey,
-      //     authority: umi.payer,
-      //   }).sendAndConfirm(umi);
+      await verifyCollectionV1(umi, {
+        metadata: findMetadataPda(umi, { mint: madlad1.publicKey }),
+        collectionMint: madLadCollection.publicKey,
+        authority: umi.payer,
+      }).sendAndConfirm(umi);
+
+      await delegateStandardV1(umi, {
+        mint: fromWeb3JsPublicKey(nftA.mintAddress),
+        tokenOwner: signer.publicKey,
+        authority: umi.payer,
+        delegate: signer.publicKey,
+        tokenStandard: TokenStandard.NonFungible,
+      }).sendAndConfirm(umi);
+      const account = await getAccount(
+        program.provider.connection,
+        nftA.tokenAddress
+      );
+      console.log(account);
+
+      await lockV1(umi, {
+        mint: fromWeb3JsPublicKey(nftA.mintAddress),
+        authority: umi.payer,
+        tokenStandard: TokenStandard.NonFungible,
+      }).sendAndConfirm(umi);
     }
   );
 
@@ -692,6 +725,17 @@ describe("Safe Presale", () => {
       toWeb3JsPublicKey(signer.publicKey),
       true
     );
+    const randomPayer = Keypair.generate();
+    const ix = SystemProgram.transfer({
+      fromPubkey: toWeb3JsPublicKey(signer.publicKey),
+      toPubkey: randomPayer.publicKey,
+      lamports: LAMPORTS_PER_SOL,
+    });
+    await sendAndConfirmTransaction(
+      program.provider.connection,
+      new Transaction().add(ix),
+      [toWeb3JsKeypair(signer)]
+    );
     try {
       const txId = await program.methods
         .claimRewards()
@@ -700,15 +744,16 @@ describe("Safe Presale", () => {
           pool: poolId,
           nft: nftA.mintAddress,
           nftOwner: signer.publicKey,
+          nftMetadata: nftA.metadataAddress,
           nftOwnerNftTokenAccount: payerOriginalMintAta,
           rewardMint: rewardMint.mint,
           nftOwnerRewardMintTokenAccount: payerRewardMintTokenAccount,
-          payer: signer.publicKey,
+          payer: randomPayer.publicKey,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .signers([toWeb3JsKeypair(signer)])
+        .signers([randomPayer])
         .rpc();
       const confirmation = await program.provider.connection.confirmTransaction(
         txId
