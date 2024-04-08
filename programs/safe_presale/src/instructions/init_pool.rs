@@ -15,6 +15,7 @@ pub struct InitPoolArgs {
     pub vested_supply: u64,
     pub total_supply: u64,
     pub creator_fee_basis_points: u16,
+    pub delegate: Option<Pubkey>
 }
 
 #[event_cpi]
@@ -92,6 +93,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
     pool.presale_target = args.presale_target;
+    pool.delegate = args.delegate;
 
 
     let pool_identifier = pool.identifier.to_le_bytes();
@@ -142,6 +144,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
 
     // Emit the Initialzed pool event
     emit_cpi!(InitializedPoolEvent {
+        delegate: pool.delegate,
         authority: pool.authority,
         pool: pool.key(),
         mint: pool.mint,

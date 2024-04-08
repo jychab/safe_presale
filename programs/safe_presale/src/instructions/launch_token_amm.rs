@@ -4,6 +4,7 @@ use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
+use anchor_lang::system_program::{transfer, Transfer};
 use anchor_spl::associated_token;
 use anchor_spl::associated_token::Create;
 use anchor_spl::{
@@ -25,9 +26,14 @@ pub struct LaunchTokenAmmCtx<'info> {
     pub pool: Box<Account<'info, Pool>>,
     /// Pays to mint the position
     #[account(mut,
-        constraint = pool.authority == user_wallet.key(),
+        constraint = pool.authority == user_wallet.key() || (pool.delegate.is_some() && pool.delegate.unwrap() == user_wallet.key()),
     )]
     pub user_wallet: Signer<'info>,
+    /// CHECK: verified by constraints
+    #[account(mut,
+        constraint = pool.authority == pool_authority.key()
+    )]
+    pub pool_authority: AccountInfo<'info>,
     #[account(
         init_if_needed,
         payer = user_wallet,
@@ -220,13 +226,24 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         ctx.accounts.amm_coin_mint.decimals,
     )?;
     close_account(CpiContext::new(
-        ctx.accounts.token_program.to_account_info(),
+        token_program.to_account_info(),
         CloseAccount {
-            account: ctx.accounts.user_token_pc.to_account_info(),
-            destination: ctx.accounts.user_wallet.to_account_info(),
-            authority: ctx.accounts.user_wallet.to_account_info(),
+            account: user_token_pc.to_account_info(),
+            destination: user_wallet.to_account_info(),
+            authority: user_wallet.to_account_info(),
         },
     ))?;
+
+    transfer(
+        CpiContext::new(
+            system_program.to_account_info(),
+            Transfer {
+                from: user_wallet.to_account_info(),
+                to: ctx.accounts.pool_authority.to_account_info(),
+            },
+        ),
+        creator_fees,
+    )?;
 
     emit_cpi!(LaunchTokenAmmEvent {
         payer: user_wallet.key(),

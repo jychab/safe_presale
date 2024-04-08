@@ -250,6 +250,7 @@ describe("Safe Presale", () => {
           maxPresaleTime: maxPresaleTime,
           presaleTarget: new BN(10),
           creatorFeeBasisPoints: 500,
+          delegate: null,
           vestingPeriod: vestingPeriod,
           vestedSupply: vestedSupply,
           totalSupply: totalSupply,
@@ -587,6 +588,7 @@ describe("Safe Presale", () => {
         .launchTokenAmm(poolInfo.nonce, new BN(Date.now()))
         .accounts({
           pool: poolId,
+          poolAuthority: signer.publicKey,
           userWallet: signer.publicKey,
           userTokenCoin: userTokenCoin,
           userTokenPc: userTokenPc,
