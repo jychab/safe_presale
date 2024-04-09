@@ -119,11 +119,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
 
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
 
-    let pool_seed = &[
-        POOL_PREFIX.as_bytes(),
-        pool.authority.as_ref(),
-        &[pool.bump],
-    ];
+    let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];
 
     transfer_checked(

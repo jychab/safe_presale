@@ -72,7 +72,7 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
 
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),
-        pool.authority.as_ref(),
+        pool.mint.as_ref(),
         &[pool.bump],
     ];
     let signer = &[&pool_seed[..]];

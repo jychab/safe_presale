@@ -111,11 +111,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     );
     pool.lp_mint = Some(ctx.accounts.amm_lp_mint.key());
 
-    let pool_seed = &[
-        POOL_PREFIX.as_bytes(),
-        pool.authority.as_ref(),
-        &[pool.bump],
-    ];
+    let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];
     let pool_token_pc = ctx.accounts.pool_token_pc.as_ref();
     let pool_token_coin = ctx.accounts.pool_token_coin.as_ref();

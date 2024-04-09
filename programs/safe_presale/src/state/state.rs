@@ -44,8 +44,7 @@ pub struct Pool {
     pub vesting_period_end: Option<i64>,
 }
 pub const POOL_PREFIX: &str = "pool";
-pub const POOL_SIZE: usize =
-    8 + 1 + 1 + 1 + 32 + 32 + 32 + 1 + 32 + 1 + 8 + 8 + 2 + 8 + 8 + 8 + 8 + 4 + 1 + 8 + 1 + 8;
+pub const POOL_SIZE: usize = std::mem::size_of::<Pool>() + 8;
 
 #[account]
 pub struct PurchaseReceipt {
@@ -67,7 +66,7 @@ impl IsInitialized for PurchaseReceipt {
 }
 
 pub const PURCHASE_RECEIPT_PREFIX: &str = "receipt";
-pub const PURCHASE_RECEIPT_SIZE: usize = 8 + std::mem::size_of::<PurchaseReceipt>() + 8;
+pub const PURCHASE_RECEIPT_SIZE: usize = std::mem::size_of::<PurchaseReceipt>() + 8;
 
 #[event]
 pub struct InitializedPoolEvent {

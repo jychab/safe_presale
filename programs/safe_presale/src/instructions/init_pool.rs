@@ -15,7 +15,8 @@ pub struct InitPoolArgs {
     pub vested_supply: u64,
     pub total_supply: u64,
     pub creator_fee_basis_points: u16,
-    pub delegate: Option<Pubkey>
+    pub delegate: Option<Pubkey>,
+    pub random_key: u64,
 }
 
 #[event_cpi]
@@ -24,22 +25,21 @@ pub struct InitPoolArgs {
 pub struct InitPoolCtx<'info> {
     #[account(
         init,
-        payer=payer,
-        space = POOL_SIZE,
-        seeds = [POOL_PREFIX.as_bytes(), payer.key().as_ref()],
-        bump,
-    )]
-    pub pool: Box<Account<'info, Pool>>,
-
-    #[account(
-        init,
         payer = payer,
-        seeds = [MINT_PREFIX.as_bytes(), payer.key().as_ref()],
+        seeds = [MINT_PREFIX.as_bytes(), args.random_key.to_le_bytes().as_ref()],
         bump,
         mint::decimals = args.decimals,
         mint::authority = pool,
     )]
     pub reward_mint: Box<InterfaceAccount<'info, Mint>>,
+    #[account(
+        init,
+        payer=payer,
+        space = POOL_SIZE,
+        seeds = [POOL_PREFIX.as_bytes(), reward_mint.key().as_ref()],
+        bump,
+    )]
+    pub pool: Box<Account<'info, Pool>>,
 
     /// CHECK: Checked by cpi
     #[account(mut)]
@@ -93,7 +93,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
 
     let seeds = &[
         POOL_PREFIX.as_bytes(),
-        pool.authority.as_ref(),
+        pool.mint.as_ref(),
         &[pool.bump],
     ];
     let signer = &[&seeds[..]];
