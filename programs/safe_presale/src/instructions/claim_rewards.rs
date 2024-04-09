@@ -130,10 +130,9 @@ pub fn handler(
     //update last_claimed_at
     purchase_receipt.last_claimed_at =  Some(current_time);
 
-    let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
             POOL_PREFIX.as_bytes(),
-            pool_identifier.as_ref(),
+            pool.authority.as_ref(),
             &[pool.bump],
         ];
     let signer = &[&pool_seed[..]];

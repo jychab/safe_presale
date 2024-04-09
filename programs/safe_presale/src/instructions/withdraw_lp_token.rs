@@ -70,10 +70,9 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         .checked_sub(creator_fees)
         .ok_or(CustomError::IntegerOverflow)?;
 
-    let pool_identifier = pool.identifier.to_le_bytes();
     let pool_seed = &[
         POOL_PREFIX.as_bytes(),
-        pool_identifier.as_ref(),
+        pool.authority.as_ref(),
         &[pool.bump],
     ];
     let signer = &[&pool_seed[..]];

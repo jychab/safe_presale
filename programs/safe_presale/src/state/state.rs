@@ -28,7 +28,6 @@ pub const MINT_PREFIX: &str = "mint";
 pub struct Pool {
     pub bump: u8,
     pub launched: bool,
-    pub identifier: u64,
     pub delegate: Option<Pubkey>,
     pub authority: Pubkey,
     pub mint: Pubkey,
@@ -46,16 +45,7 @@ pub struct Pool {
 }
 pub const POOL_PREFIX: &str = "pool";
 pub const POOL_SIZE: usize =
-    8 + 1 + 1 + 8 + 1 + 32 + 32 + 32 + 1 + 32 + 1 + 8 + 8 + 2 + 8 + 8 + 8 + 8 + 4 + 1 + 8 + 1 + 8;
-
-#[account]
-pub struct Identifier {
-    pub bump: u8,
-    pub count: u64,
-}
-
-pub const IDENTIFIER_PREFIX: &str = "identifier";
-pub const IDENTIFIER_SIZE: usize = 8 + std::mem::size_of::<Identifier>() + 8;
+    8 + 1 + 1 + 1 + 32 + 32 + 32 + 1 + 32 + 1 + 8 + 8 + 2 + 8 + 8 + 8 + 8 + 4 + 1 + 8 + 1 + 8;
 
 #[account]
 pub struct PurchaseReceipt {

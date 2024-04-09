@@ -20,9 +20,6 @@ pub mod safe_presale {
     pub fn claim_rewards(ctx: Context<ClaimRewardsCtx>) -> Result<()> {
         instructions::claim_rewards::handler(ctx)
     }
-    pub fn init_identifier(ctx: Context<InitIdentifierCtx>) -> Result<()> {
-        instructions::init_identifier::handler(ctx)
-    }
     pub fn init_pool(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         instructions::init_pool::handler(ctx, args)
     }

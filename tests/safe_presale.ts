@@ -82,8 +82,6 @@ describe("Safe Presale", () => {
   );
   umi.use(mplTokenMetadata()).use(keypairIdentity(signer));
 
-  let identifierId: PublicKey;
-  let identifier;
   let poolId: PublicKey;
   let rewardMint: {
     mint: PublicKey;
@@ -207,42 +205,13 @@ describe("Safe Presale", () => {
     }
   );
 
-  step("Initialize an identifier if required", async () => {
-    [identifierId] = PublicKey.findProgramAddressSync(
-      [Buffer.from("identifier")],
-      program.programId
-    );
-    const identifierData = await program.account.identifier.fetchNullable(
-      identifierId
-    );
-
-    identifier =
-      identifierData !== null ? identifierData.count : new anchor.BN(1);
-
-    if (!identifierData) {
-      try {
-        await program.methods
-          .initIdentifier()
-          .accounts({
-            identifier: identifierId,
-            payer: signer.publicKey,
-            systemProgram: SystemProgram.programId,
-          })
-          .signers([toWeb3JsKeypair(signer)])
-          .rpc();
-      } catch (e) {
-        console.log(e);
-      }
-    }
-  });
-
   step("Initialize a pool", async () => {
     [poolId] = PublicKey.findProgramAddressSync(
-      [Buffer.from("pool"), identifier.toArrayLike(Buffer, "le", 8)],
+      [Buffer.from("pool"), toWeb3JsPublicKey(signer.publicKey).toBuffer()],
       program.programId
     );
     const [rewardMintKey] = PublicKey.findProgramAddressSync(
-      [Buffer.from("mint"), identifier.toArrayLike(Buffer, "le", 8)],
+      [Buffer.from("mint"), toWeb3JsPublicKey(signer.publicKey).toBuffer()],
       program.programId
     );
 
@@ -292,7 +261,6 @@ describe("Safe Presale", () => {
           payer: signer.publicKey,
           pool: poolId,
           rewardMint: rewardMint.mint,
-          identifier: identifierId,
           rewardMintMetadata: rewardMint_metadata,
           poolRewardMintAta: poolAndMintRewardAta,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -307,10 +275,6 @@ describe("Safe Presale", () => {
       assert(
         data.authority.toBase58() === signer.publicKey.toString(),
         "Wrong authority"
-      );
-      assert(
-        data.identifier.toNumber() === (identifier as BN).toNumber(),
-        "Wrong identifier"
       );
       assert(
         data.liquidityCollected.toNumber() === 0,

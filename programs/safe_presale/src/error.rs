@@ -6,6 +6,8 @@ pub enum CustomError {
     NftIsNotNonFungible,
     #[msg("Presale is still ongoing")]
     PresaleIsStillOngoing,
+    #[msg("Presale has ended")]
+    PresaleHasEnded,
     #[msg("Presale target not met!")]
     PresaleTargetNotMet,
     #[msg("Token already launched")]

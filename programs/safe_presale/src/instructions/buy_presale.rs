@@ -22,6 +22,7 @@ pub struct BuyPresaleCtx<'info> {
     #[account(
         mut,
         constraint = !pool.launched @CustomError::TokenHasLaunched,
+        constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleHasEnded
     )]
     pub pool: Box<Account<'info, Pool>>,
     #[account(

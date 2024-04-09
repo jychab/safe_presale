@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, MintTo, mint_to, TokenAccount, TokenInterface}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
-use crate::{error::CustomError, state::{Identifier, InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}};
+use crate::{error::CustomError, state::{InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitPoolArgs {
@@ -26,7 +26,7 @@ pub struct InitPoolCtx<'info> {
         init,
         payer=payer,
         space = POOL_SIZE,
-        seeds = [POOL_PREFIX.as_bytes(), identifier.count.to_le_bytes().as_ref()],
+        seeds = [POOL_PREFIX.as_bytes(), payer.key().as_ref()],
         bump,
     )]
     pub pool: Box<Account<'info, Pool>>,
@@ -34,7 +34,7 @@ pub struct InitPoolCtx<'info> {
     #[account(
         init,
         payer = payer,
-        seeds = [MINT_PREFIX.as_bytes(), identifier.count.to_le_bytes().as_ref()],
+        seeds = [MINT_PREFIX.as_bytes(), payer.key().as_ref()],
         bump,
         mint::decimals = args.decimals,
         mint::authority = pool,
@@ -52,9 +52,6 @@ pub struct InitPoolCtx<'info> {
         associated_token::authority = pool,
     )]
     pub pool_reward_mint_ata: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(mut)]
-    pub identifier: Account<'info, Identifier>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -79,11 +76,9 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
     }
     let pool = &mut ctx.accounts.pool;
-    let identifier = &mut ctx.accounts.identifier;
     let current_time = Clock::get()?.unix_timestamp;
     pool.launched = false;
     pool.bump = ctx.bumps.pool;
-    pool.identifier = identifier.count;
     pool.mint = ctx.accounts.reward_mint.key();
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
@@ -96,10 +91,9 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.delegate = args.delegate;
 
 
-    let pool_identifier = pool.identifier.to_le_bytes();
     let seeds = &[
         POOL_PREFIX.as_bytes(),
-        pool_identifier.as_ref(),
+        pool.authority.as_ref(),
         &[pool.bump],
     ];
     let signer = &[&seeds[..]];
@@ -139,8 +133,6 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         collection: None,
         uses: None,
     }).invoke_signed(signer)?;
-
-    identifier.count += 1;
 
     // Emit the Initialzed pool event
     emit_cpi!(InitializedPoolEvent {
