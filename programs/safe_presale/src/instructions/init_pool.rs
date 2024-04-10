@@ -10,8 +10,9 @@ pub struct InitPoolArgs {
     pub uri: String,
     pub decimals: u8,
     pub presale_target: u64,
-    pub max_presale_time: u32,
+    pub presale_duration: u32,
     pub vesting_period: u32,
+    pub max_amount_per_purchase: Option<u64>,
     pub vested_supply: u64,
     pub total_supply: u64,
     pub creator_fee_basis_points: u16,
@@ -84,11 +85,12 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.liquidity_collected = 0;
     pool.total_supply = args.total_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
     pool.vested_supply = args.vested_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
-    pool.presale_time_limit = current_time.checked_add(args.max_presale_time.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
+    pool.presale_time_limit = current_time.checked_add(args.presale_duration.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
     pool.presale_target = args.presale_target;
     pool.delegate = args.delegate;
+    pool.max_amount_per_purchase = args.max_amount_per_purchase;
 
 
     let seeds = &[
@@ -147,6 +149,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         vested_supply: pool.vested_supply,
         total_supply: pool.total_supply,
         vesting_period: pool.vesting_period,
+        max_amount_per_purchase: pool.max_amount_per_purchase,
     });
 
     Ok(())

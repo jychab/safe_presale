@@ -13,7 +13,7 @@ pub struct ClaimRewardsCtx<'info> {
     #[account(
         mut,
         constraint = purchase_receipt.mint_elligible.is_some() @CustomError::CheckClaimFirstBeforeClaiming,
-        constraint = purchase_receipt.original_mint == nft.key()@ CustomError::MintNotAllowed
+        constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
@@ -25,7 +25,6 @@ pub struct ClaimRewardsCtx<'info> {
 
     #[account(
         constraint = nft_owner_nft_token_account.amount == 1,
-        constraint = nft_owner_nft_token_account.mint == nft.key(),
         constraint = nft_owner_nft_token_account.owner == nft_owner.key()
     )]
     pub nft_owner_nft_token_account:  Box<InterfaceAccount<'info, TokenAccount>>,
@@ -42,12 +41,7 @@ pub struct ClaimRewardsCtx<'info> {
     pub nft_owner: AccountInfo<'info>,
 
     #[account(
-        constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
-    )]
-    pub nft: Box<InterfaceAccount<'info, Mint>>,
-
-    #[account(
-        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
+        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), purchase_receipt.original_mint.as_ref()],
         bump,
         seeds::program = mpl_token_metadata::ID
     )]
@@ -71,6 +65,9 @@ pub struct ClaimRewardsCtx<'info> {
 pub fn handler(
     ctx: Context<ClaimRewardsCtx>,
 ) -> Result<()> {
+    let purchase_receipt = &mut ctx.accounts.purchase_receipt;
+    // Delegated Claim Criteria
+    // 1. Only allow delegated claiming if the nfts are frozen to the owner's wallet.
     let mut allowed = ctx.accounts.nft_owner.key() == ctx.accounts.payer.key();
     if !ctx.accounts.nft_metadata.data_is_empty() {
         let mint_metadata_data = ctx
@@ -83,13 +80,13 @@ pub fn handler(
         }
         let original_mint_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
             .expect("Failed to deserialize metadata");
-        if original_mint_metadata.mint != ctx.accounts.nft.key() {
+        if original_mint_metadata.mint != purchase_receipt.original_mint {
             return Err(error!(CustomError::InvalidMintMetadata));
         }
 
         if original_mint_metadata.collection.is_some() {
             let collection = original_mint_metadata.collection.unwrap();
-            if collection.verified && &collection.key == &collection::id() && ctx.accounts.nft_owner_nft_token_account.is_frozen(){ // only allow staked nfts to do auto withdrawal
+            if collection.verified && &collection.key == &collection::id() && ctx.accounts.nft_owner_nft_token_account.is_frozen(){ // only allow staked nfts to do delegated claiming
                 allowed = true;
             }
         }
@@ -102,7 +99,6 @@ pub fn handler(
     let vesting_started_at = pool.vesting_started_at.unwrap();
     let vesting_period_end = pool.vesting_period_end.unwrap();
     let vesting_period = pool.vesting_period;
-    let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let mint_elligible_to_claim = purchase_receipt.mint_elligible.unwrap();
 
     let current_time = Clock::get()?.unix_timestamp;
@@ -157,7 +153,7 @@ pub fn handler(
         pool: ctx.accounts.pool.key(),
         mint_claimed: mint_claimable,
         last_claimed_at: purchase_receipt.last_claimed_at.unwrap(),
-        original_mint: ctx.accounts.nft.key(),
+        original_mint: purchase_receipt.original_mint,
         original_mint_owner: ctx.accounts.nft_owner.key(),
     });
         

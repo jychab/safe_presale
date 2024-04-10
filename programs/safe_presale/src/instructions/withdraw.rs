@@ -19,13 +19,12 @@ pub struct Withdraw<'info> {
     #[account(
         mut,
         close = payer,
-        constraint = purchase_receipt.original_mint == nft.key() @ CustomError::MintNotAllowed,
+        constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
         constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
     #[account(
         constraint = nft_owner_nft_token_account.amount == 1,
-        constraint = nft_owner_nft_token_account.mint == nft.key(),
         constraint = nft_owner_nft_token_account.owner == nft_owner.key(),
     )]
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
@@ -55,11 +54,7 @@ pub struct Withdraw<'info> {
     #[account(mut)]
     pub nft_owner: AccountInfo<'info>,
     #[account(
-        constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
-    )]
-    pub nft: Box<InterfaceAccount<'info, Mint>>,
-    #[account(
-        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
+        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), purchase_receipt.original_mint.as_ref()],
         bump,
         seeds::program = mpl_token_metadata::ID
     )]
@@ -76,9 +71,13 @@ pub struct Withdraw<'info> {
 }
 pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
     let pool = &ctx.accounts.pool;
+    let purchase_receipt = &mut ctx.accounts.purchase_receipt;
+    // Withdrawal criteria
+    // 1. Only allow withdrawal after presale has ended.
+    // 2. If presale target amount is not met, withdrawal is allowed immediately.
+    // 3. If presale target amount is met, only allow withdrawal after the creator failed to launch the project after 7 days.
     let current_time = Clock::get()?.unix_timestamp;
-    let grace_period = 7 * 24 * 60 * 60;
-    if current_time < pool.presale_time_limit + grace_period {
+    if current_time < pool.presale_time_limit + GRACE_PERIOD {
         if current_time < pool.presale_time_limit {
             return Err(error!(CustomError::UnauthorizedAtCurrentTime));
         }
@@ -86,6 +85,8 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
             return Err(error!(CustomError::WaitingForCreatorToLaunch));
         }
     }
+    // Delegated withdrawal criteria
+    // 1. Only allow delegated withdrawal if the nfts are frozen to the owner's wallet.
     let mut allowed = ctx.accounts.nft_owner.key() == ctx.accounts.payer.key();
     if !ctx.accounts.nft_metadata.data_is_empty() {
         let mint_metadata_data = ctx
@@ -98,7 +99,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
         }
         let original_mint_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
             .expect("Failed to deserialize metadata");
-        if original_mint_metadata.mint != ctx.accounts.nft.key() {
+        if original_mint_metadata.mint != purchase_receipt.original_mint {
             return Err(error!(CustomError::InvalidMintMetadata));
         }
 
@@ -116,8 +117,6 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
     if !allowed {
         return Err(error!(CustomError::InvalidSigner));
     }
-
-    let purchase_receipt = &mut ctx.accounts.purchase_receipt;
 
     let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];

@@ -15,7 +15,7 @@ pub struct WithdrawPoolLpToken<'info> {
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
     #[account(
         constraint = nft_owner_nft_token_account.amount == 1,
-        constraint = nft_owner_nft_token_account.owner == user_wallet.key(),
+        constraint = nft_owner_nft_token_account.owner == user_wallet.key() @CustomError::InvalidSigner,
     )]
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(

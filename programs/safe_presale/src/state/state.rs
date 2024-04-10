@@ -24,6 +24,8 @@ pub mod public_keys {
 
 pub const MINT_PREFIX: &str = "mint";
 
+pub const GRACE_PERIOD: i64 = 7 * 24 * 60 * 60;
+
 #[account]
 pub struct Pool {
     pub bump: u8,
@@ -34,6 +36,7 @@ pub struct Pool {
     pub lp_mint: Option<Pubkey>,
     pub lp_mint_supply: Option<u64>,
     pub liquidity_collected: u64,
+    pub max_amount_per_purchase: Option<u64>,
     pub creator_fee_basis_points: u16,
     pub vested_supply: u64,
     pub total_supply: u64,
@@ -81,6 +84,7 @@ pub struct InitializedPoolEvent {
     pub total_supply: u64,
     pub decimal: u8,
     pub vesting_period: u32,
+    pub max_amount_per_purchase: Option<u64>,
 }
 
 #[event]

@@ -44,8 +44,10 @@ pub enum CustomError {
     VestingSupplyLargerThanTotalSupply,
     #[msg("Creator Fees basis points exceed 10000")]
     CreatorBasisPointsExceedMaximumAmount,
-    #[msg("Purchase Amount cannot be zero")]
-    AmountPurchasedIsZero,
+    #[msg("The value needs to be higher than zero.")]
+    NumberCannotBeZero,
+    #[msg("Purchase Amount cannot be exceed allowable amount!")]
+    AmountPurchaseExceeded,
     #[msg("Check Claim Amount first before claiming")]
     CheckClaimFirstBeforeClaiming,
     #[msg("Claim Amount is already updated")]

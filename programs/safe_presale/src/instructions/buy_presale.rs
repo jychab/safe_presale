@@ -34,6 +34,13 @@ pub struct BuyPresaleCtx<'info> {
     pub pool_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
+        constraint = nft_owner_nft_token_account.amount == 1,
+        constraint = nft_owner_nft_token_account.mint == nft.key(),
+        constraint = nft_owner_nft_token_account.owner == payer.key() @CustomError::InvalidSigner
+    )]
+    pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
         address = public_keys::wsol::id()
     )]
     pub wsol_mint: Box<InterfaceAccount<'info, Mint>>,
@@ -53,12 +60,10 @@ pub struct BuyPresaleCtx<'info> {
 
 pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
     if amount == 0 {
-        return Err(error!(CustomError::AmountPurchasedIsZero));
+        return Err(error!(CustomError::NumberCannotBeZero));
     }
-
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool = &mut ctx.accounts.pool;
-
     if !purchase_receipt.is_initialized {
         purchase_receipt.bump = ctx.bumps.purchase_receipt;
         purchase_receipt.pool = pool.key();
@@ -71,6 +76,11 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
             .amount
             .checked_add(amount)
             .ok_or(CustomError::IntegerOverflow)?;
+    }
+    if pool.max_amount_per_purchase.is_some()
+        && purchase_receipt.amount > pool.max_amount_per_purchase.unwrap()
+    {
+        return Err(error!(CustomError::AmountPurchaseExceeded));
     }
 
     pool.liquidity_collected = pool

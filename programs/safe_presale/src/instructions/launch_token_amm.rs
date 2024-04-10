@@ -94,12 +94,15 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     open_time: u64,
 ) -> Result<()> {
     let current_time = Clock::get()?.unix_timestamp;
-    let grace_period = 7 * 24 * 60 * 60;
     let pool = &mut ctx.accounts.pool;
+    // Launch Criteria
+    // 1. Only allow launch after presale has ended
+    // 2. Do not allow project to launch after the 7 day grace period
+    // 3. Presale target must be met
     if current_time < pool.presale_time_limit {
         return Err(error!(CustomError::UnauthorizedAtCurrentTime));
     }
-    if pool.presale_time_limit + grace_period < current_time {
+    if pool.presale_time_limit + GRACE_PERIOD < current_time {
         return Err(error!(CustomError::PoolHasExpired));
     }
     pool.launched = true;

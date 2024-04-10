@@ -59,6 +59,7 @@ import { BN, Program } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/utils/token";
 import { assert } from "chai";
 import { getSimulationUnits } from "./utils";
+import crypto from "crypto";
 
 describe("Safe Presale", () => {
   // Configure the client to use the local cluster.
@@ -126,92 +127,108 @@ describe("Safe Presale", () => {
   step(
     "Setup: creates one nft, verified as part of the same collection",
     async () => {
-      let madLadCollection = generateSigner(umi);
-      await createNft(umi, {
-        mint: madLadCollection,
-        name: "Mad Lad Collection",
-        uri: "https://example.com/my-collection.json",
-        sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
-        creators: [{ address: signer.publicKey, verified: true, share: 100 }],
-        isCollection: true,
-      }).sendAndConfirm(umi);
+      // let madLadCollection = generateSigner(umi);
+      // await createNft(umi, {
+      //   mint: madLadCollection,
+      //   name: "Mad Lad Collection",
+      //   uri: "https://example.com/my-collection.json",
+      //   sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
+      //   creators: [{ address: signer.publicKey, verified: true, share: 100 }],
+      //   isCollection: true,
+      // }).sendAndConfirm(umi);
       collection = {
-        mintAddress: new PublicKey(madLadCollection.publicKey),
+        mintAddress: new PublicKey(
+          "C7MU51LL1EJmnD7QhXC1ejpp6ZgSS79kS6rkd7PCYvXN"
+        ),
         masterEditionAddress: toWeb3JsPublicKey(
           findMasterEditionPda(umi, {
-            mint: madLadCollection.publicKey,
+            mint: publicKey("C7MU51LL1EJmnD7QhXC1ejpp6ZgSS79kS6rkd7PCYvXN"),
           })[0]
         ),
         metadataAddress: toWeb3JsPublicKey(
           findMetadataPda(umi, {
-            mint: madLadCollection.publicKey,
+            mint: publicKey("C7MU51LL1EJmnD7QhXC1ejpp6ZgSS79kS6rkd7PCYvXN"),
           })[0]
         ),
       };
-      let madlad1 = generateSigner(umi);
-      await createNft(umi, {
-        mint: madlad1,
-        name: "MadLad 1",
-        uri: "https://arweave.net/my-content-hash",
-        sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
-        isMutable: true,
-        collection: {
-          key: madLadCollection.publicKey,
-          verified: false,
-        },
-      }).sendAndConfirm(umi);
+      // let madlad1 = generateSigner(umi);
+      // await createNft(umi, {
+      //   mint: madlad1,
+      //   name: "MadLad 1",
+      //   uri: "https://arweave.net/my-content-hash",
+      //   sellerFeeBasisPoints: percentAmount(5.5), // 5.5%
+      //   isMutable: true,
+      //   collection: {
+      //     key: madLadCollection.publicKey,
+      //     verified: false,
+      //   },
+      // }).sendAndConfirm(umi);
       nftA = {
-        mintAddress: new PublicKey(madlad1.publicKey),
+        mintAddress: new PublicKey(
+          "4HEkZSUaGDEwCMDtxowi6RCCsUyY4LAaFzJBE4UeCpxM"
+        ),
         tokenAddress: getAssociatedTokenAddressSync(
-          toWeb3JsPublicKey(madlad1.publicKey),
+          new PublicKey("4HEkZSUaGDEwCMDtxowi6RCCsUyY4LAaFzJBE4UeCpxM"),
           toWeb3JsPublicKey(signer.publicKey),
           true
         ),
         masterEditionAddress: toWeb3JsPublicKey(
           findMasterEditionPda(umi, {
-            mint: madlad1.publicKey,
+            mint: publicKey("4HEkZSUaGDEwCMDtxowi6RCCsUyY4LAaFzJBE4UeCpxM"),
           })[0]
         ),
         metadataAddress: toWeb3JsPublicKey(
           findMetadataPda(umi, {
-            mint: madlad1.publicKey,
+            mint: publicKey("4HEkZSUaGDEwCMDtxowi6RCCsUyY4LAaFzJBE4UeCpxM"),
           })[0]
         ),
       };
-      await verifyCollectionV1(umi, {
-        metadata: findMetadataPda(umi, { mint: madlad1.publicKey }),
-        collectionMint: madLadCollection.publicKey,
-        authority: umi.payer,
-      }).sendAndConfirm(umi);
+      // await verifyCollectionV1(umi, {
+      //   metadata: findMetadataPda(umi, { mint: madlad1.publicKey }),
+      //   collectionMint: madLadCollection.publicKey,
+      //   authority: umi.payer,
+      // }).sendAndConfirm(umi);
 
-      await delegateStandardV1(umi, {
-        mint: fromWeb3JsPublicKey(nftA.mintAddress),
-        tokenOwner: signer.publicKey,
-        authority: umi.payer,
-        delegate: signer.publicKey,
-        tokenStandard: TokenStandard.NonFungible,
-      }).sendAndConfirm(umi);
-      const account = await getAccount(
-        program.provider.connection,
-        nftA.tokenAddress
-      );
-      console.log(account);
+      // await delegateStandardV1(umi, {
+      //   mint: fromWeb3JsPublicKey(nftA.mintAddress),
+      //   tokenOwner: signer.publicKey,
+      //   authority: umi.payer,
+      //   delegate: signer.publicKey,
+      //   tokenStandard: TokenStandard.NonFungible,
+      // }).sendAndConfirm(umi);
+      // const account = await getAccount(
+      //   program.provider.connection,
+      //   nftA.tokenAddress
+      // );
+      // console.log(account);
 
-      await lockV1(umi, {
-        mint: fromWeb3JsPublicKey(nftA.mintAddress),
-        authority: umi.payer,
-        tokenStandard: TokenStandard.NonFungible,
-      }).sendAndConfirm(umi);
+      // await lockV1(umi, {
+      //   mint: fromWeb3JsPublicKey(nftA.mintAddress),
+      //   authority: umi.payer,
+      //   tokenStandard: TokenStandard.NonFungible,
+      // }).sendAndConfirm(umi);
     }
   );
 
+  function generateRandomU64() {
+    // Generate two 32-bit integers
+    const upper = Math.floor(Math.random() * 0x100000000); // 2^32
+    const lower = Math.floor(Math.random() * 0x100000000); // 2^32
+
+    // Combine them to form a 64-bit integer
+    const u64 = (upper << 32) | lower;
+
+    return u64;
+  }
+
   step("Initialize a pool", async () => {
-    [poolId] = PublicKey.findProgramAddressSync(
-      [Buffer.from("pool"), toWeb3JsPublicKey(signer.publicKey).toBuffer()],
+    const randomKey = generateRandomU64();
+    const [rewardMintKey] = PublicKey.findProgramAddressSync(
+      [Buffer.from("mint"), new BN(randomKey).toArrayLike(Buffer, "le", 8)],
       program.programId
     );
-    const [rewardMintKey] = PublicKey.findProgramAddressSync(
-      [Buffer.from("mint"), toWeb3JsPublicKey(signer.publicKey).toBuffer()],
+    [poolId] = PublicKey.findProgramAddressSync(
+      [Buffer.from("pool"), rewardMintKey.toBuffer()],
       program.programId
     );
 
@@ -225,7 +242,7 @@ describe("Safe Presale", () => {
     const totalSupply = new BN(1000000000);
     const vestedSupply = new BN(500000000);
     const vestingPeriod = 3 * 24 * 60 * 60; //3days in seconds
-    const maxPresaleTime = 1; // in seconds
+    const presaleDuration = 2; // in seconds
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -249,13 +266,15 @@ describe("Safe Presale", () => {
           symbol: rewardMint.symbol,
           decimals: rewardMint.decimal,
           uri: rewardMint.uri,
-          maxPresaleTime: maxPresaleTime,
           presaleTarget: new BN(10),
           creatorFeeBasisPoints: 500,
           delegate: null,
+          maxAmountPerPurchase: new BN(LAMPORTS_PER_SOL),
           vestingPeriod: vestingPeriod,
           vestedSupply: vestedSupply,
           totalSupply: totalSupply,
+          presaleDuration: presaleDuration,
+          randomKey: new BN(randomKey),
         })
         .accounts({
           payer: signer.publicKey,
@@ -270,36 +289,36 @@ describe("Safe Presale", () => {
         })
         .signers([toWeb3JsKeypair(signer)])
         .rpc();
-      const data = await program.account.pool.fetch(poolId);
-      assert(data.launched === false, "Not allowed for purchase");
-      assert(
-        data.authority.toBase58() === signer.publicKey.toString(),
-        "Wrong authority"
-      );
-      assert(
-        data.liquidityCollected.toNumber() === 0,
-        "Initial Liquidity is not zero"
-      );
-      assert(
-        data.mint.toBase58() === rewardMint.mint.toBase58(),
-        "Wrong reward mint"
-      );
-      assert(
-        data.totalSupply.toNumber() ===
-          totalSupply.toNumber() * 10 ** rewardMint.decimal,
-        "Wrong total supply"
-      );
-      assert(
-        data.vestedSupply.toNumber() ===
-          vestedSupply.toNumber() * 10 ** rewardMint.decimal,
-        "Wrong vested supply"
-      );
-      assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
-      assert(data.vestingStartedAt === null, "Vesting should not have started");
-      assert(data.vestingPeriodEnd === null, "Vesting should not have ended");
     } catch (e) {
       console.log(e);
     }
+    const data = await program.account.pool.fetch(poolId);
+    assert(data.launched === false, "Not allowed for purchase");
+    assert(
+      data.authority.toBase58() === signer.publicKey.toString(),
+      "Wrong authority"
+    );
+    assert(
+      data.liquidityCollected.toNumber() === 0,
+      "Initial Liquidity is not zero"
+    );
+    assert(
+      data.mint.toBase58() === rewardMint.mint.toBase58(),
+      "Wrong reward mint"
+    );
+    assert(
+      data.totalSupply.toNumber() ===
+        totalSupply.toNumber() * 10 ** rewardMint.decimal,
+      "Wrong total supply"
+    );
+    assert(
+      data.vestedSupply.toNumber() ===
+        vestedSupply.toNumber() * 10 ** rewardMint.decimal,
+      "Wrong vested supply"
+    );
+    assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
+    assert(data.vestingStartedAt === null, "Vesting should not have started");
+    assert(data.vestingPeriodEnd === null, "Vesting should not have ended");
   });
 
   step("Buy presale", async () => {
@@ -312,8 +331,13 @@ describe("Safe Presale", () => {
       poolId,
       true
     );
+    const payerOriginalMintAta = getAssociatedTokenAddressSync(
+      nftA.mintAddress,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
 
-    const amount = new BN(0.1 * LAMPORTS_PER_SOL);
+    const amount = new BN(0.5 * LAMPORTS_PER_SOL);
     try {
       await program.methods
         .buyPresale(amount)
@@ -322,6 +346,7 @@ describe("Safe Presale", () => {
           wsolMint: new PublicKey(WSOL.mint),
           poolWsolTokenAccount: poolAndWSOLATA,
           purchaseReceipt: purchaseReceipt,
+          nftOwnerNftTokenAccount: payerOriginalMintAta,
           pool: poolId,
           nft: nftA.mintAddress,
           payer: signer.publicKey,
@@ -371,6 +396,11 @@ describe("Safe Presale", () => {
       poolId,
       true
     );
+    const payerOriginalMintAta = getAssociatedTokenAddressSync(
+      nftA.mintAddress,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
     const randomPayer = Keypair.generate();
     const ix = SystemProgram.transfer({
       fromPubkey: toWeb3JsPublicKey(signer.publicKey),
@@ -383,6 +413,7 @@ describe("Safe Presale", () => {
       [toWeb3JsKeypair(signer)]
     );
     const amount = new BN(0.1 * LAMPORTS_PER_SOL);
+    let failed = false;
     try {
       await program.methods
         .buyPresale(amount)
@@ -391,6 +422,7 @@ describe("Safe Presale", () => {
           wsolMint: new PublicKey(WSOL.mint),
           poolWsolTokenAccount: poolAndWSOLATA,
           purchaseReceipt: purchaseReceipt,
+          nftOwnerNftTokenAccount: payerOriginalMintAta,
           pool: poolId,
           nft: nftA.mintAddress,
           payer: randomPayer.publicKey,
@@ -399,13 +431,61 @@ describe("Safe Presale", () => {
         .signers([randomPayer])
         .rpc();
     } catch (e) {
+      failed = true;
       console.log(e);
     }
+    assert(failed, "Should fail because you do not owned the nft");
     const receipt = await program.account.purchaseReceipt.fetch(
       purchaseReceipt
     );
     assert(
-      receipt.amount.toNumber() === amount.toNumber() * 2,
+      receipt.amount.toNumber() === 0.5 * LAMPORTS_PER_SOL,
+      "Amount is not equal"
+    );
+  });
+  step("Buy presale exceed total cap", async () => {
+    [purchaseReceipt] = PublicKey.findProgramAddressSync(
+      [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
+      program.programId
+    );
+    const poolAndWSOLATA = getAssociatedTokenAddressSync(
+      new PublicKey(WSOL.mint),
+      poolId,
+      true
+    );
+    const payerOriginalMintAta = getAssociatedTokenAddressSync(
+      nftA.mintAddress,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
+    const amount = new BN(0.6 * LAMPORTS_PER_SOL);
+    let failed = false;
+    try {
+      await program.methods
+        .buyPresale(amount)
+        .accounts({
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          wsolMint: new PublicKey(WSOL.mint),
+          poolWsolTokenAccount: poolAndWSOLATA,
+          purchaseReceipt: purchaseReceipt,
+          nftOwnerNftTokenAccount: payerOriginalMintAta,
+          pool: poolId,
+          nft: nftA.mintAddress,
+          payer: signer.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([toWeb3JsKeypair(signer)])
+        .rpc();
+    } catch (e) {
+      failed = true;
+      console.log(e);
+    }
+    assert(failed, "Should fail because amount exceeded capped set by creator");
+    const receipt = await program.account.purchaseReceipt.fetch(
+      purchaseReceipt
+    );
+    assert(
+      receipt.amount.toNumber() === 0.5 * LAMPORTS_PER_SOL,
       "Amount is not equal"
     );
   });
@@ -689,35 +769,23 @@ describe("Safe Presale", () => {
       toWeb3JsPublicKey(signer.publicKey),
       true
     );
-    const randomPayer = Keypair.generate();
-    const ix = SystemProgram.transfer({
-      fromPubkey: toWeb3JsPublicKey(signer.publicKey),
-      toPubkey: randomPayer.publicKey,
-      lamports: LAMPORTS_PER_SOL,
-    });
-    await sendAndConfirmTransaction(
-      program.provider.connection,
-      new Transaction().add(ix),
-      [toWeb3JsKeypair(signer)]
-    );
     try {
       const txId = await program.methods
         .claimRewards()
         .accounts({
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
-          nft: nftA.mintAddress,
           nftOwner: signer.publicKey,
           nftMetadata: nftA.metadataAddress,
           nftOwnerNftTokenAccount: payerOriginalMintAta,
           rewardMint: rewardMint.mint,
           nftOwnerRewardMintTokenAccount: payerRewardMintTokenAccount,
-          payer: randomPayer.publicKey,
+          payer: signer.publicKey,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           systemProgram: SystemProgram.programId,
         })
-        .signers([randomPayer])
+        .signers([toWeb3JsKeypair(signer)])
         .rpc();
       const confirmation = await program.provider.connection.confirmTransaction(
         txId
@@ -725,10 +793,10 @@ describe("Safe Presale", () => {
       if (confirmation.value.err) {
         console.log("Error");
       }
-      const data = await program.account.purchaseReceipt.fetch(purchaseReceipt);
-      console.log(data);
     } catch (e) {
       console.log(e);
     }
+    const data = await program.account.purchaseReceipt.fetch(purchaseReceipt);
+    console.log(data);
   });
 });
