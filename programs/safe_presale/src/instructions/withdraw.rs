@@ -20,7 +20,9 @@ pub struct Withdraw<'info> {
         mut,
         close = payer,
         constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
-        constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool
+        constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool,
+        seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), purchase_receipt.pool.as_ref(), purchase_receipt.original_mint.as_ref()],
+        bump = purchase_receipt.bump,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
     #[account(
@@ -30,6 +32,8 @@ pub struct Withdraw<'info> {
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
         constraint = !pool.launched @CustomError::TokenHasLaunched,
+        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
+        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
     #[account(

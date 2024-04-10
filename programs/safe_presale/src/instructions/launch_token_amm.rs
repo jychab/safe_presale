@@ -22,6 +22,8 @@ pub struct LaunchTokenAmmCtx<'info> {
         constraint = pool.presale_target <= pool.liquidity_collected @CustomError::PresaleTargetNotMet,
         constraint = !pool.launched @CustomError::TokenHasLaunched,
         constraint = pool.mint == amm_coin_mint.key(),
+        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
+        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
     /// Pays to mint the position

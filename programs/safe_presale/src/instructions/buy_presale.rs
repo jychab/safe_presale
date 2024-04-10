@@ -22,7 +22,9 @@ pub struct BuyPresaleCtx<'info> {
     #[account(
         mut,
         constraint = !pool.launched @CustomError::TokenHasLaunched,
-        constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleHasEnded
+        constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleHasEnded,
+        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
+        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
     #[account(

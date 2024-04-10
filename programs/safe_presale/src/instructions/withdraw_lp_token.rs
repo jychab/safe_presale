@@ -11,6 +11,8 @@ pub struct WithdrawPoolLpToken<'info> {
         constraint = purchase_receipt.lp_elligible.is_some() @CustomError::CheckClaimFirstBeforeClaiming,
         constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
         constraint = purchase_receipt.pool == pool.key() @CustomError::InvalidPool,
+        seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), purchase_receipt.pool.as_ref(), purchase_receipt.original_mint.as_ref()],
+        bump = purchase_receipt.bump,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
     #[account(
@@ -19,7 +21,9 @@ pub struct WithdrawPoolLpToken<'info> {
     )]
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
-        constraint = pool.vesting_period_end.is_some() && pool.vesting_period_end.unwrap() < Clock::get()?.unix_timestamp @CustomError::UnauthorizedAtCurrentTime
+        constraint = pool.vesting_period_end.is_some() && pool.vesting_period_end.unwrap() < Clock::get()?.unix_timestamp @CustomError::UnauthorizedAtCurrentTime,
+        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
+        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
     #[account(

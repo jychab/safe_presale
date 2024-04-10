@@ -9,12 +9,16 @@ pub struct CheckClaimCtx<'info> {
     #[account(
         mut,
         constraint = purchase_receipt.mint_elligible.is_none() || purchase_receipt.lp_elligible.is_none() @CustomError::ClaimedAlreadyChecked,
+        seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), purchase_receipt.pool.as_ref(), purchase_receipt.original_mint.as_ref()],
+        bump = purchase_receipt.bump,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
     #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
-        constraint = pool.launched @CustomError::PresaleIsStillOngoing
+        constraint = pool.launched @CustomError::PresaleIsStillOngoing,
+        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
+        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
 
