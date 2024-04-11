@@ -50,9 +50,6 @@ pub struct LaunchTokenAmmCtx<'info> {
         associated_token::authority = user_wallet,
     )]
     pub user_token_pc: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// CHECK: To be created by cpi
-    #[account(mut)]
-    pub user_token_lp: UncheckedAccount<'info>,
     #[account(
         mut,
         constraint = pool_token_coin.owner == pool.key(),
@@ -65,9 +62,6 @@ pub struct LaunchTokenAmmCtx<'info> {
         constraint = pool_token_pc.mint == amm_pc_mint.key()
     )]
     pub pool_token_pc: Box<InterfaceAccount<'info, TokenAccount>>,
-    /// CHECK: To be created later after lp mint has been created by cpi
-    #[account(mut)]
-    pub pool_token_lp: UncheckedAccount<'info>,
     /// Sysvar for token mint and ATA creation
     pub rent: Sysvar<'info, Rent>,
     /// Program to create the position manager state account
@@ -83,9 +77,6 @@ pub struct LaunchTokenAmmCtx<'info> {
         constraint = amm_pc_mint.key() == public_keys::wsol::id()
     )]
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
-    /// CHECK: To be created by cpi
-    #[account(mut)]
-    pub amm_lp_mint: UncheckedAccount<'info>,
     /// CHECK: Checked by cpi
     #[account(address = public_keys::amm_v4_devnet::id())]
     pub raydium_amm_program: AccountInfo<'info>,
@@ -97,6 +88,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
 ) -> Result<()> {
     let current_time = Clock::get()?.unix_timestamp;
     let pool = &mut ctx.accounts.pool;
+    let remaining_accounts = ctx.remaining_accounts.as_ref();
     // Launch Criteria
     // 1. Only allow launch after presale has ended
     // 2. Do not allow project to launch after the 7 day grace period
@@ -114,7 +106,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
             .checked_add(pool.vesting_period.try_into().unwrap())
             .ok_or(CustomError::IntegerOverflow)?,
     );
-    pool.lp_mint = Some(ctx.accounts.amm_lp_mint.key());
+    pool.lp_mint = Some(remaining_accounts.get(3).unwrap().key());
 
     let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];
@@ -122,15 +114,16 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     let pool_token_coin = ctx.accounts.pool_token_coin.as_ref();
     let user_token_coin = ctx.accounts.user_token_coin.as_ref();
     let user_token_pc = ctx.accounts.user_token_pc.as_ref();
-    let user_token_lp = ctx.accounts.user_token_lp.as_ref();
 
-    let amm_lp_mint = ctx.accounts.amm_lp_mint.as_ref();
+    let amm_lp_mint = remaining_accounts.get(0).unwrap().to_account_info();
+    let user_token_lp = remaining_accounts.get(1).unwrap().to_account_info();
+    let pool_token_lp = remaining_accounts.get(2).unwrap().to_account_info();
+
     let user_wallet = ctx.accounts.user_wallet.as_ref();
 
     let system_program = ctx.accounts.system_program.as_ref();
     let associated_token_program = ctx.accounts.associated_token_program.as_ref();
     let token_program = ctx.accounts.token_program.as_ref();
-    let remaining_accounts = ctx.remaining_accounts.as_ref();
     let amount_coin_in_pool = pool
         .total_supply
         .checked_sub(pool.vested_supply)
@@ -174,19 +167,19 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         system_program.to_account_info(),
         ctx.accounts.rent.to_account_info(),
         ctx.accounts.raydium_amm_program.to_account_info(),
-        remaining_accounts.get(0).unwrap().to_account_info(),
-        remaining_accounts.get(1).unwrap().to_account_info(),
-        remaining_accounts.get(2).unwrap().to_account_info(),
-        amm_lp_mint.to_account_info(),
-        ctx.accounts.amm_coin_mint.to_account_info(),
-        ctx.accounts.amm_pc_mint.to_account_info(),
         remaining_accounts.get(3).unwrap().to_account_info(),
         remaining_accounts.get(4).unwrap().to_account_info(),
         remaining_accounts.get(5).unwrap().to_account_info(),
+        amm_lp_mint.to_account_info(),
+        ctx.accounts.amm_coin_mint.to_account_info(),
+        ctx.accounts.amm_pc_mint.to_account_info(),
         remaining_accounts.get(6).unwrap().to_account_info(),
         remaining_accounts.get(7).unwrap().to_account_info(),
         remaining_accounts.get(8).unwrap().to_account_info(),
         remaining_accounts.get(9).unwrap().to_account_info(),
+        remaining_accounts.get(10).unwrap().to_account_info(),
+        remaining_accounts.get(11).unwrap().to_account_info(),
+        remaining_accounts.get(12).unwrap().to_account_info(),
         user_wallet.to_account_info(),
         user_token_coin.to_account_info(),
         user_token_pc.to_account_info(),
@@ -221,7 +214,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         system_program.to_account_info(),
         token_program.to_account_info(),
         user_token_lp.to_account_info(),
-        ctx.accounts.pool_token_lp.to_account_info(),
+        pool_token_lp.to_account_info(),
         user_lp_amount,
         ctx.accounts.amm_coin_mint.decimals,
     )?;

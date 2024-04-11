@@ -615,7 +615,20 @@ describe("Safe Presale", () => {
       marketProgramId: DEVNET_PROGRAM_ID.OPENBOOK_MARKET,
     });
 
+    const poolTokenLp = getAssociatedTokenAddressSync(
+      poolInfo.lpMint,
+      poolId,
+      true
+    );
+    const userTokenLp = getAssociatedTokenAddressSync(
+      poolInfo.lpMint,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
     const remainingAccounts = [
+      { pubkey: poolInfo.lpMint, isSigner: false, isWritable: false },
+      { pubkey: userTokenLp, isSigner: false, isWritable: false },
+      { pubkey: poolTokenLp, isSigner: false, isWritable: false },
       { pubkey: poolInfo.id, isSigner: false, isWritable: true },
       { pubkey: poolInfo.authority, isSigner: false, isWritable: false },
       {
@@ -646,11 +659,6 @@ describe("Safe Presale", () => {
       toWeb3JsPublicKey(signer.publicKey),
       true
     );
-    const userTokenLp = getAssociatedTokenAddressSync(
-      poolInfo.lpMint,
-      toWeb3JsPublicKey(signer.publicKey),
-      true
-    );
     const poolTokenCoin = getAssociatedTokenAddressSync(
       poolInfo.baseMint,
       poolId,
@@ -658,11 +666,6 @@ describe("Safe Presale", () => {
     );
     const poolTokenPc = getAssociatedTokenAddressSync(
       poolInfo.quoteMint,
-      poolId,
-      true
-    );
-    const poolTokenLp = getAssociatedTokenAddressSync(
-      poolInfo.lpMint,
       poolId,
       true
     );
@@ -676,17 +679,14 @@ describe("Safe Presale", () => {
           userWallet: signer.publicKey,
           userTokenCoin: userTokenCoin,
           userTokenPc: userTokenPc,
-          userTokenLp: userTokenLp,
           poolTokenPc: poolTokenPc,
           poolTokenCoin: poolTokenCoin,
-          poolTokenLp: poolTokenLp,
           rent: RENT_PROGRAM_ID,
           systemProgram: SYSTEM_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           ammCoinMint: poolInfo.baseMint,
           ammPcMint: poolInfo.quoteMint,
-          ammLpMint: poolInfo.lpMint,
           raydiumAmmProgram: DEVNET_PROGRAM_ID.AmmV4,
         })
         .signers([toWeb3JsKeypair(signer)])
