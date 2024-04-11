@@ -13,7 +13,7 @@ pub struct CreatePurchaseAuthorizationCtx<'info> {
         seeds = [PURCHASE_AUTHORISATION_PREFIX.as_bytes(), pool.key().as_ref(), collection_mint.as_ref()],
         bump,
     )]
-    pub purchase_authorisation_record: Box<Account<'info, PurchaseAuthorizationRecord>>,
+    pub purchase_authorisation_record: Box<Account<'info, PurchaseAuthorisationRecord>>,
 
     #[account(
         constraint = !pool.launched @CustomError::TokenHasLaunched,
@@ -40,7 +40,7 @@ pub fn handler(
     purchase_authorisation_record.collection_mint = collection_mint;
     purchase_authorisation_record.pool = ctx.accounts.pool.key();
 
-    emit_cpi!(CreatePurchaseAuthorizationEvent {
+    emit_cpi!(CreatePurchaseAuthorisationEvent {
         payer: ctx.accounts.payer.key(),
         pool: ctx.accounts.pool.key(),
         collection_mint: collection_mint,

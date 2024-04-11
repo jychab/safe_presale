@@ -51,14 +51,14 @@ pub const POOL_PREFIX: &str = "pool";
 pub const POOL_SIZE: usize = std::mem::size_of::<Pool>() + 8;
 
 #[account]
-pub struct PurchaseAuthorizationRecord {
+pub struct PurchaseAuthorisationRecord {
     pub pool: Pubkey,
     pub collection_mint: Pubkey,
     pub bump: u8,
 }
-pub const PURCHASE_AUTHORISATION_PREFIX: &str = "authorization";
+pub const PURCHASE_AUTHORISATION_PREFIX: &str = "authorisation";
 pub const PURCHASE_AUTHORISATION_SIZE: usize =
-    std::mem::size_of::<PurchaseAuthorizationRecord>() + 8;
+    std::mem::size_of::<PurchaseAuthorisationRecord>() + 8;
 
 #[account]
 pub struct PurchaseReceipt {
@@ -96,10 +96,11 @@ pub struct InitializedPoolEvent {
     pub decimal: u8,
     pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
+    pub requires_collection: bool,
 }
 
 #[event]
-pub struct CreatePurchaseAuthorizationEvent {
+pub struct CreatePurchaseAuthorisationEvent {
     pub payer: Pubkey,
     pub collection_mint: Pubkey,
     pub pool: Pubkey,

@@ -64,7 +64,7 @@ pub struct BuyPresaleCtx<'info> {
         seeds = [PURCHASE_AUTHORISATION_PREFIX.as_bytes(), pool.key().as_ref(), purchase_authorisation_record.collection_mint.as_ref()],
         bump = purchase_authorisation_record.bump
     )]
-    pub purchase_authorisation_record: Option<Box<Account<'info, PurchaseAuthorizationRecord>>>,
+    pub purchase_authorisation_record: Option<Box<Account<'info, PurchaseAuthorisationRecord>>>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -97,13 +97,14 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
                 let original_mint_metadata =
                     Metadata::deserialize(&mut mint_metadata_data.as_ref())
                         .expect("Failed to deserialize metadata");
-                if original_mint_metadata.mint != purchase_receipt.original_mint {
+                if original_mint_metadata.mint != ctx.accounts.nft.key() {
                     return Err(error!(CustomError::InvalidMintMetadata));
                 }
 
                 if original_mint_metadata.collection.is_some() {
                     let collection = original_mint_metadata.collection.unwrap();
-                    allowed = collection.key == authorization_record.collection_mint;
+                    allowed = collection.verified
+                        && collection.key == authorization_record.collection_mint;
                 }
             }
         } else {

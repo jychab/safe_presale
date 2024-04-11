@@ -152,6 +152,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         total_supply: pool.total_supply,
         vesting_period: pool.vesting_period,
         max_amount_per_purchase: pool.max_amount_per_purchase,
+        requires_collection: args.requires_collection,
     });
 
     Ok(())
