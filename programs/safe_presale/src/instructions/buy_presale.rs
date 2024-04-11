@@ -7,6 +7,7 @@ use anchor_spl::{
     associated_token::AssociatedToken,
     token_interface::{sync_native, Mint, SyncNative, TokenAccount, TokenInterface},
 };
+use mpl_token_metadata::accounts::Metadata;
 #[event_cpi]
 #[derive(Accounts)]
 pub struct BuyPresaleCtx<'info> {
@@ -51,6 +52,20 @@ pub struct BuyPresaleCtx<'info> {
     )]
     pub nft: Box<InterfaceAccount<'info, Mint>>,
 
+    #[account(
+        seeds = ["metadata".as_bytes(), mpl_token_metadata::ID.as_ref(), nft.key().as_ref()],
+        bump,
+        seeds::program = mpl_token_metadata::ID
+    )]
+    /// CHECK: This is not dangerous because we don't read or write from this account
+    pub nft_metadata: AccountInfo<'info>,
+
+    #[account(
+        seeds = [PURCHASE_AUTHORISATION_PREFIX.as_bytes(), pool.key().as_ref(), purchase_authorisation_record.collection_mint.as_ref()],
+        bump = purchase_authorisation_record.bump
+    )]
+    pub purchase_authorisation_record: Option<Box<Account<'info, PurchaseAuthorizationRecord>>>,
+
     #[account(mut)]
     pub payer: Signer<'info>,
 
@@ -66,6 +81,39 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
     }
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool = &mut ctx.accounts.pool;
+    let mut allowed = true;
+    if pool.requires_collection {
+        if let Some(authorization_record) = &ctx.accounts.purchase_authorisation_record {
+            if !ctx.accounts.nft_metadata.data_is_empty() {
+                let mint_metadata_data = ctx
+                    .accounts
+                    .nft_metadata
+                    .try_borrow_mut_data()
+                    .expect("Failed to borrow data");
+                if ctx.accounts.nft_metadata.to_account_info().owner.key() != mpl_token_metadata::ID
+                {
+                    return Err(error!(CustomError::InvalidMintMetadataOwner));
+                }
+                let original_mint_metadata =
+                    Metadata::deserialize(&mut mint_metadata_data.as_ref())
+                        .expect("Failed to deserialize metadata");
+                if original_mint_metadata.mint != purchase_receipt.original_mint {
+                    return Err(error!(CustomError::InvalidMintMetadata));
+                }
+
+                if original_mint_metadata.collection.is_some() {
+                    let collection = original_mint_metadata.collection.unwrap();
+                    allowed = collection.key == authorization_record.collection_mint;
+                }
+            }
+        } else {
+            return Err(error!(CustomError::PurchaseAuthorisationRecordMissing));
+        }
+    }
+    if !allowed {
+        return Err(error!(CustomError::UnauthorisedCollection));
+    }
+
     if !purchase_receipt.is_initialized {
         purchase_receipt.bump = ctx.bumps.purchase_receipt;
         purchase_receipt.pool = pool.key();

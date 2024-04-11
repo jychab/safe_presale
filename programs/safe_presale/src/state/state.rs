@@ -29,6 +29,7 @@ pub const GRACE_PERIOD: i64 = 7 * 24 * 60 * 60;
 #[account]
 pub struct Pool {
     pub bump: u8,
+    pub requires_collection: bool,
     pub launched: bool,
     pub delegate: Option<Pubkey>,
     pub authority: Pubkey,
@@ -48,6 +49,16 @@ pub struct Pool {
 }
 pub const POOL_PREFIX: &str = "pool";
 pub const POOL_SIZE: usize = std::mem::size_of::<Pool>() + 8;
+
+#[account]
+pub struct PurchaseAuthorizationRecord {
+    pub pool: Pubkey,
+    pub collection_mint: Pubkey,
+    pub bump: u8,
+}
+pub const PURCHASE_AUTHORISATION_PREFIX: &str = "authorization";
+pub const PURCHASE_AUTHORISATION_SIZE: usize =
+    std::mem::size_of::<PurchaseAuthorizationRecord>() + 8;
 
 #[account]
 pub struct PurchaseReceipt {
@@ -85,6 +96,13 @@ pub struct InitializedPoolEvent {
     pub decimal: u8,
     pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
+}
+
+#[event]
+pub struct CreatePurchaseAuthorizationEvent {
+    pub payer: Pubkey,
+    pub collection_mint: Pubkey,
+    pub pool: Pubkey,
 }
 
 #[event]

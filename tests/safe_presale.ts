@@ -275,6 +275,7 @@ describe("Safe Presale", () => {
           totalSupply: totalSupply,
           presaleDuration: presaleDuration,
           randomKey: new BN(randomKey),
+          requiresCollection: false,
         })
         .accounts({
           payer: signer.publicKey,
@@ -342,6 +343,8 @@ describe("Safe Presale", () => {
       await program.methods
         .buyPresale(amount)
         .accounts({
+          purchaseAuthorisationRecord: null,
+          nftMetadata: nftA.metadataAddress,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           wsolMint: new PublicKey(WSOL.mint),
           poolWsolTokenAccount: poolAndWSOLATA,
@@ -418,6 +421,8 @@ describe("Safe Presale", () => {
       await program.methods
         .buyPresale(amount)
         .accounts({
+          purchaseAuthorisationRecord: null,
+          nftMetadata: nftA.metadataAddress,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           wsolMint: new PublicKey(WSOL.mint),
           poolWsolTokenAccount: poolAndWSOLATA,
@@ -464,6 +469,8 @@ describe("Safe Presale", () => {
       await program.methods
         .buyPresale(amount)
         .accounts({
+          purchaseAuthorisationRecord: null,
+          nftMetadata: nftA.metadataAddress,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           wsolMint: new PublicKey(WSOL.mint),
           poolWsolTokenAccount: poolAndWSOLATA,

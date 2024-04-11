@@ -54,4 +54,8 @@ pub enum CustomError {
     ClaimedAlreadyChecked,
     #[msg("Signer must be owner of nft")]
     InvalidSigner,
+    #[msg("Purchase authorisation record is missing!")]
+    PurchaseAuthorisationRecordMissing,
+    #[msg("Collection is not authorised!")]
+    UnauthorisedCollection,
 }

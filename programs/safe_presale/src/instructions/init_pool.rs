@@ -18,6 +18,7 @@ pub struct InitPoolArgs {
     pub creator_fee_basis_points: u16,
     pub delegate: Option<Pubkey>,
     pub random_key: u64,
+    pub requires_collection: bool,
 }
 
 #[event_cpi]
@@ -91,6 +92,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.presale_target = args.presale_target;
     pool.delegate = args.delegate;
     pool.max_amount_per_purchase = args.max_amount_per_purchase;
+    pool.requires_collection = args.requires_collection;
 
 
     let seeds = &[
