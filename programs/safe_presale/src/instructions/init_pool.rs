@@ -1,5 +1,5 @@
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, MintTo, mint_to, TokenAccount, TokenInterface}};
+use anchor_spl::{associated_token::AssociatedToken, token_2022::spl_token_2022::instruction::AuthorityType, token_interface::{mint_to, set_authority, Mint, MintTo, SetAuthority, TokenAccount, TokenInterface}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
 use crate::{error::CustomError, state::{InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}};
 
@@ -53,7 +53,7 @@ pub struct InitPoolCtx<'info> {
         associated_token::mint = reward_mint,
         associated_token::authority = pool,
     )]
-    pub pool_reward_mint_ata: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_reward_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -102,22 +102,18 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     ];
     let signer = &[&seeds[..]];
 
-    //mint remaining token to pool
-    let cpi_accounts = MintTo {
-        mint: ctx.accounts.reward_mint.to_account_info(),
-        to: ctx
-            .accounts
-            .pool_reward_mint_ata
-            .to_account_info(),
-        authority: pool.to_account_info(),
-    };
-    let cpi_program = ctx.accounts.token_program.to_account_info();
-    let cpi_context = CpiContext::new(cpi_program, cpi_accounts)
-        .with_signer(signer);
-    let amount_to_mint = pool.total_supply.checked_sub(pool.vested_supply).ok_or(CustomError::IntegerOverflow)?;
+    //mint all supply to pool then revoke freeze and mint authority for token
     mint_to(
-        cpi_context,
-        amount_to_mint
+        CpiContext::new(ctx.accounts.token_program.to_account_info(), MintTo {
+            mint: ctx.accounts.reward_mint.to_account_info(),
+            to: ctx
+                .accounts
+                .pool_reward_mint_token_account
+                .to_account_info(),
+            authority: pool.to_account_info(),
+        })
+        .with_signer(signer),
+        pool.total_supply
     )?;
 
     CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
@@ -137,6 +133,15 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         collection: None,
         uses: None,
     }).invoke_signed(signer)?;
+
+    //set mint authority to none
+    set_authority(CpiContext::new(ctx.accounts.token_program.to_account_info(), SetAuthority{
+        current_authority: pool.to_account_info(),
+        account_or_mint: ctx.accounts.reward_mint.to_account_info(),
+    }).with_signer(signer), 
+    AuthorityType::MintTokens, 
+    None
+    )?;
 
     // Emit the Initialzed pool event
     emit_cpi!(InitializedPoolEvent {

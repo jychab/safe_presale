@@ -242,7 +242,7 @@ describe("Safe Presale", () => {
     const totalSupply = new BN(1000000000);
     const vestedSupply = new BN(500000000);
     const vestingPeriod = 3 * 24 * 60 * 60; //3days in seconds
-    const presaleDuration = 2; // in seconds
+    const presaleDuration = 4; // in seconds
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -282,7 +282,7 @@ describe("Safe Presale", () => {
           pool: poolId,
           rewardMint: rewardMint.mint,
           rewardMintMetadata: rewardMint_metadata,
-          poolRewardMintAta: poolAndMintRewardAta,
+          poolRewardMintTokenAccount: poolAndMintRewardAta,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
           mplTokenProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
@@ -626,9 +626,9 @@ describe("Safe Presale", () => {
       true
     );
     const remainingAccounts = [
-      { pubkey: poolInfo.lpMint, isSigner: false, isWritable: false },
-      { pubkey: userTokenLp, isSigner: false, isWritable: false },
-      { pubkey: poolTokenLp, isSigner: false, isWritable: false },
+      { pubkey: poolInfo.lpMint, isSigner: false, isWritable: true },
+      { pubkey: userTokenLp, isSigner: false, isWritable: true },
+      { pubkey: poolTokenLp, isSigner: false, isWritable: true },
       { pubkey: poolInfo.id, isSigner: false, isWritable: true },
       { pubkey: poolInfo.authority, isSigner: false, isWritable: false },
       {
@@ -742,17 +742,48 @@ describe("Safe Presale", () => {
   });
 
   step("Check Claim Rewards", async () => {
+    const poolData = await program.account.pool.fetch(poolId);
+
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
+    );
+    const purchaseReceiptMintTokenAccount = getAssociatedTokenAddressSync(
+      rewardMint.mint,
+      purchaseReceipt,
+      true
+    );
+    const purchaseReceiptLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
+      purchaseReceipt,
+      true
+    );
+    const poolLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
+      poolId,
+      true
+    );
+    const poolMintTokenAccount = getAssociatedTokenAddressSync(
+      rewardMint.mint,
+      poolId,
+      true
     );
     try {
       await program.methods
         .checkClaimEllgibility()
         .accounts({
+          purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
+          purchaseReceiptMintTokenAccount: purchaseReceiptMintTokenAccount,
+          poolLpTokenAccount: poolLpTokenAccount,
+          poolMintTokenAccount: poolMintTokenAccount,
           purchaseReceipt: purchaseReceipt,
+          rewardMint: rewardMint.mint,
+          lpMint: poolData.lpMint,
           pool: poolId,
           payer: toWeb3JsPublicKey(signer.publicKey),
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          systemProgram: SystemProgram.programId,
+          tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([toWeb3JsKeypair(signer)])
         .rpc();
@@ -765,6 +796,11 @@ describe("Safe Presale", () => {
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
+    );
+    const purchaseReceiptMintTokenAccount = getAssociatedTokenAddressSync(
+      rewardMint.mint,
+      purchaseReceipt,
+      true
     );
     const payerOriginalMintAta = getAssociatedTokenAddressSync(
       nftA.mintAddress,
@@ -780,6 +816,7 @@ describe("Safe Presale", () => {
       const txId = await program.methods
         .claimRewards()
         .accounts({
+          purchaseReceiptMintTokenAccount: purchaseReceiptMintTokenAccount,
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
           nftOwner: signer.publicKey,

@@ -2,6 +2,8 @@ use crate::error::CustomError;
 use crate::state::*;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
+use anchor_spl::associated_token::AssociatedToken;
+use anchor_spl::token_interface::{TokenAccount, TokenInterface, Mint, transfer_checked, TransferChecked};
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -15,6 +17,46 @@ pub struct CheckClaimCtx<'info> {
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
     #[account(
+        init_if_needed,
+        payer = payer,  
+        associated_token::mint = lp_mint,
+        associated_token::authority = purchase_receipt,
+    )]
+    pub purchase_receipt_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        init_if_needed,
+        payer = payer,  
+        associated_token::mint = reward_mint,
+        associated_token::authority = purchase_receipt,
+    )]
+    pub purchase_receipt_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        constraint = pool_lp_token_account.owner == pool.key(),
+        constraint = pool_lp_token_account.mint == pool.lp_mint.unwrap(),
+    )]
+    pub pool_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        constraint = pool_mint_token_account.owner == pool.key(),
+        constraint = pool_mint_token_account.mint == pool.mint,
+    )]
+    pub pool_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        constraint = reward_mint.key() == pool.mint @CustomError::InvalidRewardMint,
+    )]
+    pub reward_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    #[account(
+        constraint = lp_mint.key() == pool.lp_mint.unwrap() @CustomError::InvalidLpMint,
+    )]
+    pub lp_mint: Box<InterfaceAccount<'info, Mint>>,
+
+    #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
         constraint = pool.launched @CustomError::PresaleIsStillOngoing,
         seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
@@ -24,6 +66,10 @@ pub struct CheckClaimCtx<'info> {
 
     #[account(mut)]
     pub payer: Signer<'info>,
+
+    pub associated_token_program: Program<'info, AssociatedToken>,
+    pub token_program: Interface<'info, TokenInterface>,
+    pub system_program: Program<'info, System>,
 }
 
 pub fn handler(ctx: Context<CheckClaimCtx>) -> Result<()> {
@@ -58,8 +104,45 @@ pub fn handler(ctx: Context<CheckClaimCtx>) -> Result<()> {
                 .ok_or(CustomError::IntegerOverflow)?,
             None => return Err(error!(CustomError::IntegerOverflow)),
         };
-    purchase_receipt.lp_elligible = Some(lp_elligible.as_u64());
     purchase_receipt.mint_elligible = Some(mint_elligible);
+    purchase_receipt.lp_elligible = Some(lp_elligible.as_u64());
+
+    let pool_seed = &[
+        POOL_PREFIX.as_bytes(),
+        pool.mint.as_ref(),
+        &[pool.bump],
+    ];
+    let signer = &[&pool_seed[..]];
+
+    transfer_checked(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                mint: ctx.accounts.reward_mint.to_account_info(),
+                from: ctx.accounts.pool_mint_token_account.to_account_info(),
+                to: ctx.accounts.purchase_receipt_mint_token_account.to_account_info(),
+                authority: pool.to_account_info(),
+            },
+        )
+        .with_signer(signer),
+        mint_elligible,
+        ctx.accounts.reward_mint.decimals,
+    )?;
+
+    transfer_checked(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
+                mint: ctx.accounts.lp_mint.to_account_info(),
+                from: ctx.accounts.pool_lp_token_account.to_account_info(),
+                to: ctx.accounts.purchase_receipt_lp_token_account.to_account_info(),
+                authority: pool.to_account_info(),
+            },
+        )
+        .with_signer(signer),
+        lp_elligible.as_u64(),
+        ctx.accounts.lp_mint.decimals,
+    )?;
 
     emit_cpi!(CheckClaimEvent {
         payer: ctx.accounts.payer.key(),

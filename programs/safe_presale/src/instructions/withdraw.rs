@@ -42,14 +42,14 @@ pub struct Withdraw<'info> {
         associated_token::mint = wsol,
         associated_token::authority = payer,
 	)]
-    pub payer_token_wsol: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub payer_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
 		init_if_needed,
         payer = payer,
         associated_token::mint = wsol,
         associated_token::authority = pool,
 	)]
-    pub pool_token_wsol: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
 		address = public_keys::wsol::id()
 	)]
@@ -130,8 +130,8 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
             ctx.accounts.token_program.to_account_info(),
             TransferChecked {
                 mint: ctx.accounts.wsol.to_account_info(),
-                from: ctx.accounts.pool_token_wsol.to_account_info(),
-                to: ctx.accounts.payer_token_wsol.to_account_info(),
+                from: ctx.accounts.pool_wsol_token_account.to_account_info(),
+                to: ctx.accounts.payer_wsol_token_account.to_account_info(),
                 authority: pool.to_account_info(),
             },
         )
@@ -143,7 +143,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
     close_account(CpiContext::new(
         ctx.accounts.token_program.to_account_info(),
         CloseAccount {
-            account: ctx.accounts.payer_token_wsol.to_account_info(),
+            account: ctx.accounts.payer_wsol_token_account.to_account_info(),
             destination: ctx.accounts.payer.to_account_info(),
             authority: ctx.accounts.payer.to_account_info(),
         },

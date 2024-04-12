@@ -28,10 +28,10 @@ pub struct WithdrawPoolLpToken<'info> {
     pub pool: Box<Account<'info, Pool>>,
     #[account(
         mut, 
-        constraint = pool_authority_token_lp.owner == pool.authority,
-        constraint = pool_authority_token_lp.mint == lp_mint.key()
+        constraint = pool_authority_lp_token_account.owner == pool.authority,
+        constraint = pool_authority_lp_token_account.mint == lp_mint.key()
     )]
-    pub pool_authority_token_lp: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_authority_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(mut)]
     pub user_wallet: Signer<'info>,
     #[account(
@@ -40,14 +40,13 @@ pub struct WithdrawPoolLpToken<'info> {
         associated_token::mint = lp_mint,
         associated_token::authority = user_wallet,
 	)]
-    pub user_token_lp: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub user_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
-		init_if_needed,
-        payer = user_wallet,
-        associated_token::mint = lp_mint,
-        associated_token::authority = pool,
+		mut,
+        constraint = purchase_receipt_lp_token_account.owner == purchase_receipt.key(),
+        constraint = purchase_receipt_lp_token_account.mint == lp_mint.key(),
 	)]
-    pub pool_token_lp: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub purchase_receipt_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
 		constraint = pool.lp_mint.is_some() && lp_mint.key() == pool.lp_mint.unwrap()
 	)]
@@ -74,20 +73,21 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
         .checked_sub(creator_fees)
         .ok_or(CustomError::IntegerOverflow)?;
 
-    let pool_seed = &[
-        POOL_PREFIX.as_bytes(),
-        pool.mint.as_ref(),
-        &[pool.bump],
-    ];
-    let signer = &[&pool_seed[..]];
+    let purchase_seed = &[
+            PURCHASE_RECEIPT_PREFIX.as_bytes(), 
+            purchase_receipt.pool.as_ref(), 
+            purchase_receipt.original_mint.as_ref(),
+            &[purchase_receipt.bump],
+        ];
+    let signer = &[&purchase_seed[..]];
 
     transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             TransferChecked {
                 mint: ctx.accounts.lp_mint.to_account_info(),
-                from: ctx.accounts.pool_token_lp.to_account_info(),
-                to: ctx.accounts.pool_authority_token_lp.to_account_info(),
+                from: ctx.accounts.purchase_receipt_lp_token_account.to_account_info(),
+                to: ctx.accounts.pool_authority_lp_token_account.to_account_info(),
                 authority: pool.to_account_info(),
             },
         )
@@ -101,8 +101,8 @@ pub fn handler<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
             ctx.accounts.token_program.to_account_info(),
             TransferChecked {
                 mint: ctx.accounts.lp_mint.to_account_info(),
-                from: ctx.accounts.pool_token_lp.to_account_info(),
-                to: ctx.accounts.user_token_lp.to_account_info(),
+                from: ctx.accounts.purchase_receipt_lp_token_account.to_account_info(),
+                to: ctx.accounts.user_lp_token_account.to_account_info(),
                 authority: pool.to_account_info(),
             },
         )

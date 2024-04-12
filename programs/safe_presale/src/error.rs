@@ -34,6 +34,8 @@ pub enum CustomError {
     InvalidPool,
     #[msg("Invalid reward mint")]
     InvalidRewardMint,
+    #[msg("Invalid lp mint")]
+    InvalidLpMint,
     #[msg("Nothing left to claim")]
     MaximumAmountClaimed,
     #[msg("Either presale or vesting is still ongoing")]

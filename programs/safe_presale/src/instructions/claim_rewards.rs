@@ -3,7 +3,7 @@ use crate::state::*;
 use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
-use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, MintTo, mint_to, TokenAccount, TokenInterface}};
+use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, transfer_checked, TransferChecked, TokenAccount, TokenInterface}};
 use mpl_token_metadata::accounts::Metadata;
 use state::public_keys::collection;
 
@@ -18,6 +18,13 @@ pub struct ClaimRewardsCtx<'info> {
         bump = purchase_receipt.bump,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
+
+    #[account(
+        mut,
+        constraint = purchase_receipt_mint_token_account.owner == purchase_receipt.key(),
+        constraint = purchase_receipt_mint_token_account.mint == reward_mint.key(),
+    )]
+    pub purchase_receipt_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
@@ -130,27 +137,28 @@ pub fn handler(
     //update last_claimed_at
     purchase_receipt.last_claimed_at =  Some(current_time);
 
-    let pool_seed = &[
-            POOL_PREFIX.as_bytes(),
-            pool.mint.as_ref(),
-            &[pool.bump],
+    let purchase_seed = &[
+            PURCHASE_RECEIPT_PREFIX.as_bytes(), 
+            purchase_receipt.pool.as_ref(), 
+            purchase_receipt.original_mint.as_ref(),
+            &[purchase_receipt.bump],
         ];
-    let signer = &[&pool_seed[..]];
+    let signer = &[&purchase_seed[..]];
 
-    mint_to(
+    transfer_checked(
         CpiContext::new(
-            ctx.accounts.token_program.to_account_info(), 
-            MintTo {
+            ctx.accounts.token_program.to_account_info(),
+            TransferChecked {
                 mint: ctx.accounts.reward_mint.to_account_info(),
-                to: ctx
-                    .accounts
-                    .nft_owner_reward_mint_token_account
-                    .to_account_info(),
-                authority: pool.to_account_info(),
-            }
-        ).with_signer(signer),
-        mint_claimable
-    )?;   
+                from: ctx.accounts.purchase_receipt_mint_token_account.to_account_info(),
+                to: ctx.accounts.nft_owner_reward_mint_token_account.to_account_info(),
+                authority: purchase_receipt.to_account_info(),
+            },
+        )
+        .with_signer(signer),
+        mint_claimable,
+        ctx.accounts.reward_mint.decimals,
+    )?;
 
     emit_cpi!(ClaimRewardsEvent {
         payer: ctx.accounts.payer.key(),
