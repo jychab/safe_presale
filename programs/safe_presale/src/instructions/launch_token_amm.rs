@@ -89,6 +89,17 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     let current_time = Clock::get()?.unix_timestamp;
     let pool = &mut ctx.accounts.pool;
     let remaining_accounts = ctx.remaining_accounts.as_ref();
+    let pool_token_pc = ctx.accounts.pool_token_pc.as_ref();
+    let pool_token_coin = ctx.accounts.pool_token_coin.as_ref();
+    let user_token_coin = ctx.accounts.user_token_coin.as_ref();
+    let user_token_pc = ctx.accounts.user_token_pc.as_ref();
+    let amm_lp_mint = remaining_accounts.get(0).unwrap().to_account_info();
+    let user_token_lp = remaining_accounts.get(1).unwrap().to_account_info();
+    let pool_token_lp = remaining_accounts.get(2).unwrap().to_account_info();
+    let user_wallet = ctx.accounts.user_wallet.as_ref();
+    let system_program = ctx.accounts.system_program.as_ref();
+    let associated_token_program = ctx.accounts.associated_token_program.as_ref();
+    let token_program = ctx.accounts.token_program.as_ref();
     // Launch Criteria
     // 1. Only allow launch after presale has ended
     // 2. Do not allow project to launch after the 7 day grace period
@@ -99,6 +110,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     if pool.presale_time_limit + GRACE_PERIOD < current_time {
         return Err(error!(CustomError::PoolHasExpired));
     }
+
     pool.launched = true;
     pool.vesting_started_at = Some(current_time);
     pool.vesting_period_end = Some(
@@ -106,24 +118,10 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
             .checked_add(pool.vesting_period.try_into().unwrap())
             .ok_or(CustomError::IntegerOverflow)?,
     );
-    pool.lp_mint = Some(remaining_accounts.get(3).unwrap().key());
+    pool.lp_mint = Some(amm_lp_mint.key());
 
     let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];
-    let pool_token_pc = ctx.accounts.pool_token_pc.as_ref();
-    let pool_token_coin = ctx.accounts.pool_token_coin.as_ref();
-    let user_token_coin = ctx.accounts.user_token_coin.as_ref();
-    let user_token_pc = ctx.accounts.user_token_pc.as_ref();
-
-    let amm_lp_mint = remaining_accounts.get(0).unwrap().to_account_info();
-    let user_token_lp = remaining_accounts.get(1).unwrap().to_account_info();
-    let pool_token_lp = remaining_accounts.get(2).unwrap().to_account_info();
-
-    let user_wallet = ctx.accounts.user_wallet.as_ref();
-
-    let system_program = ctx.accounts.system_program.as_ref();
-    let associated_token_program = ctx.accounts.associated_token_program.as_ref();
-    let token_program = ctx.accounts.token_program.as_ref();
     let amount_coin_in_pool = pool
         .total_supply
         .checked_sub(pool.vested_supply)
