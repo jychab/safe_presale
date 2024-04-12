@@ -2,21 +2,19 @@ use anchor_lang::prelude::*;
 
 #[error_code]
 pub enum CustomError {
-    #[msg("Nft is not non-fungible")]
+    #[msg("Nft must be Non-Fungible")]
     NftIsNotNonFungible,
     #[msg("Presale is still ongoing")]
     PresaleIsStillOngoing,
     #[msg("Presale has ended")]
     PresaleHasEnded,
-    #[msg("Presale target not met!")]
+    #[msg("Presale target not met")]
     PresaleTargetNotMet,
     #[msg("Token already launched")]
     TokenHasLaunched,
-    #[msg(
-        "The pool expired because the creator failed to launch it within the 7 day grace period."
-    )]
+    #[msg("Creator failed to launch project within 7 days.")]
     PoolHasExpired,
-    #[msg("Presale target is met, unable to withdraw. ")]
+    #[msg("Presale target is met, Unable to withdraw. ")]
     WaitingForCreatorToLaunch,
     #[msg("Conversion to u64 failed with an overflow or underflow")]
     ConversionFailure,
@@ -40,22 +38,22 @@ pub enum CustomError {
     MaximumAmountClaimed,
     #[msg("Either presale or vesting is still ongoing")]
     UnauthorizedAtCurrentTime,
-    #[msg("Vesting Supply larget than total supply")]
+    #[msg("Vesting Supply cannot be larger than Total Supply")]
     VestingSupplyLargerThanTotalSupply,
-    #[msg("Creator Fees basis points exceed 10000")]
+    #[msg("Creator Fees Basis Points cannot exceed 10000")]
     CreatorBasisPointsExceedMaximumAmount,
-    #[msg("The value needs to be higher than zero.")]
+    #[msg("Amount cannot be zero")]
     NumberCannotBeZero,
-    #[msg("Purchase Amount cannot be exceed allowable amount!")]
+    #[msg("Purchase amount exceeded")]
     AmountPurchaseExceeded,
-    #[msg("Check Claim Amount first before claiming")]
+    #[msg("Check elligibility first")]
     CheckClaimFirstBeforeClaiming,
-    #[msg("Claim Amount is already updated")]
+    #[msg("Already checked")]
     ClaimedAlreadyChecked,
     #[msg("Signer must be owner of nft")]
     InvalidSigner,
-    #[msg("Purchase authorisation record is missing!")]
+    #[msg("Purchase authorisation record is missing")]
     PurchaseAuthorisationRecordMissing,
-    #[msg("Collection is not authorised!")]
+    #[msg("Collection is not authorised")]
     UnauthorisedCollection,
 }
