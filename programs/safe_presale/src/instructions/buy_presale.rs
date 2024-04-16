@@ -69,6 +69,13 @@ pub struct BuyPresaleCtx<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
+    /// CHECK: This is only used to deposit sol
+    #[account(
+        mut,
+        address = public_keys::fee_collector::id()
+    )]
+    pub fee_collector: AccountInfo<'info>,
+
     pub system_program: Program<'info, System>,
 
     pub token_program: Interface<'info, TokenInterface>,
@@ -138,6 +145,17 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         .liquidity_collected
         .checked_add(amount)
         .ok_or(CustomError::IntegerOverflow)?;
+
+    transfer(
+        CpiContext::new(
+            ctx.accounts.token_program.to_account_info(),
+            Transfer {
+                from: ctx.accounts.payer.to_account_info(),
+                to: ctx.accounts.fee_collector.to_account_info(),
+            },
+        ),
+        amount.checked_div(100).unwrap(),
+    )?;
 
     transfer(
         CpiContext::new(

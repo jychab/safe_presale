@@ -4,8 +4,6 @@ use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token_interface::{Mint, transfer_checked, TransferChecked, TokenAccount, TokenInterface}};
-use mpl_token_metadata::accounts::Metadata;
-use state::public_keys::collection;
 
 #[event_cpi]
 #[derive(Accounts)]
@@ -79,29 +77,29 @@ pub fn handler(
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     // Delegated Claim Criteria
     // 1. Only allow delegated claiming if the nfts are frozen to the owner's wallet.
-    let mut allowed = ctx.accounts.nft_owner.key() == ctx.accounts.payer.key();
-    if !ctx.accounts.nft_metadata.data_is_empty() {
-        let mint_metadata_data = ctx
-            .accounts
-            .nft_metadata
-            .try_borrow_mut_data()
-            .expect("Failed to borrow data");
-        if ctx.accounts.nft_metadata.to_account_info().owner.key() != mpl_token_metadata::ID {
-            return Err(error!(CustomError::InvalidMintMetadataOwner));
-        }
-        let original_mint_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
-            .expect("Failed to deserialize metadata");
-        if original_mint_metadata.mint != purchase_receipt.original_mint {
-            return Err(error!(CustomError::InvalidMintMetadata));
-        }
+    let allowed = ctx.accounts.nft_owner.key() == ctx.accounts.payer.key();
+    // if !ctx.accounts.nft_metadata.data_is_empty() {
+    //     let mint_metadata_data = ctx
+    //         .accounts
+    //         .nft_metadata
+    //         .try_borrow_mut_data()
+    //         .expect("Failed to borrow data");
+    //     if ctx.accounts.nft_metadata.to_account_info().owner.key() != mpl_token_metadata::ID {
+    //         return Err(error!(CustomError::InvalidMintMetadataOwner));
+    //     }
+    //     let original_mint_metadata = Metadata::deserialize(&mut mint_metadata_data.as_ref())
+    //         .expect("Failed to deserialize metadata");
+    //     if original_mint_metadata.mint != purchase_receipt.original_mint {
+    //         return Err(error!(CustomError::InvalidMintMetadata));
+    //     }
 
-        if original_mint_metadata.collection.is_some() {
-            let collection = original_mint_metadata.collection.unwrap();
-            if collection.verified && &collection.key == &collection::id() && ctx.accounts.nft_owner_nft_token_account.is_frozen(){ // only allow staked nfts to do delegated claiming
-                allowed = true;
-            }
-        }
-    }
+    //     if original_mint_metadata.collection.is_some() {
+    //         let collection = original_mint_metadata.collection.unwrap();
+    //         if collection.verified && &collection.key == &collection::id() && ctx.accounts.nft_owner_nft_token_account.is_frozen(){ // only allow staked nfts to do delegated claiming
+    //             allowed = true;
+    //         }
+    //     }
+    // }
     if !allowed {
         return Err(error!(CustomError::InvalidSigner));
     }

@@ -78,7 +78,7 @@ pub struct LaunchTokenAmmCtx<'info> {
     )]
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
-    #[account(address = public_keys::amm_v4_devnet::id())]
+    #[account(address = public_keys::amm_v4_mainnet::id())]
     pub raydium_amm_program: AccountInfo<'info>,
 }
 pub fn handler<'a, 'b, 'c: 'info, 'info>(
@@ -225,16 +225,18 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         },
     ))?;
 
-    transfer(
-        CpiContext::new(
-            system_program.to_account_info(),
-            Transfer {
-                from: user_wallet.to_account_info(),
-                to: ctx.accounts.pool_authority.to_account_info(),
-            },
-        ),
-        creator_fees,
-    )?;
+    if user_wallet.key() != ctx.accounts.pool_authority.key() {
+        transfer(
+            CpiContext::new(
+                system_program.to_account_info(),
+                Transfer {
+                    from: user_wallet.to_account_info(),
+                    to: ctx.accounts.pool_authority.to_account_info(),
+                },
+            ),
+            creator_fees,
+        )?;
+    }
 
     emit_cpi!(LaunchTokenAmmEvent {
         payer: user_wallet.key(),
