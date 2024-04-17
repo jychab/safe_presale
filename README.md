@@ -9,6 +9,6 @@ Features:
 
 Demo App:
 
-[MemeStarter](wwww.memestarter.app)
+[MemeStarter](https://www.memestarter.app)
    
 
