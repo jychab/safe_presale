@@ -5,6 +5,10 @@ This smart contract is created to lock presale funds into a programmed owned esc
 Features:
 1. Customize presale duration/target, whitelisted collections, max purchase per wallet, creators fee, etc.
 2. Link each presale purchase to an NFT via PDAs (so that vesting tokens can be traded via the NFT as proxy)
-3. If presale conditions are not met, users can withdraw their funds. 
+3. If presale conditions are not met, users can withdraw their funds.
+
+Demo App:
+
+[MemeStarter](wwww.memestarter.app)
    
 
