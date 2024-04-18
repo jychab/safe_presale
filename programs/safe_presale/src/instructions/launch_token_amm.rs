@@ -78,7 +78,7 @@ pub struct LaunchTokenAmmCtx<'info> {
     )]
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
-    #[account(address = public_keys::amm_v4_devnet::id())]
+    #[account(address = public_keys::amm_v4_mainnet::id())]
     pub raydium_amm_program: AccountInfo<'info>,
 }
 pub fn handler<'a, 'b, 'c: 'info, 'info>(
