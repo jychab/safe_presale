@@ -131,7 +131,6 @@ pub fn handler(ctx: Context<WithdrawLpCtx>) -> Result<()> {
             .checked_sub(purchase_receipt.lp_claimed)
             .ok_or(CustomError::IntegerOverflow)?;
     } else {
-        // all using unix_timestamp
         let last_claimed_at = purchase_receipt
             .last_claimed_at
             .unwrap_or(vesting_started_at);
@@ -148,7 +147,7 @@ pub fn handler(ctx: Context<WithdrawLpCtx>) -> Result<()> {
             .ok_or(CustomError::IntegerOverflow)?;
     }
 
-    //update mint_claimed
+    //update lp_claimed
     purchase_receipt.lp_claimed = purchase_receipt
         .lp_claimed
         .checked_add(lp_claimable)
