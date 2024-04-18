@@ -138,9 +138,14 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         amount_pc_in_pool,
         ctx.accounts.amm_pc_mint.decimals,
     )?;
+    let creator_fees = U128::from(amount_pc_in_pool)
+        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
+        .and_then(|result| result.checked_div(U128::from(10000)))
+        .and_then(|result| Some(result.as_u64()))
+        .ok_or(CustomError::IntegerOverflow)?;
 
-    let amount_after_presale_target_subtracted = amount_pc_in_pool
-        .checked_sub(pool.presale_target)
+    let amount_after_creator_fees = amount_pc_in_pool
+        .checked_sub(creator_fees)
         .ok_or(CustomError::IntegerOverflow)?;
 
     cpi_initialize2(
@@ -168,12 +173,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_token_lp.to_account_info(),
         nonce,
         open_time,
-        amount_after_presale_target_subtracted,
+        amount_after_creator_fees,
         amount_coin_in_pool,
     )?;
 
     let liquidity = Calculator::to_u64(
-        U128::from(amount_after_presale_target_subtracted)
+        U128::from(amount_after_creator_fees)
             .checked_mul(amount_coin_in_pool.into())
             .unwrap()
             .integer_sqrt()
@@ -218,7 +223,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
                     to: ctx.accounts.pool_authority.to_account_info(),
                 },
             ),
-            pool.presale_target,
+            creator_fees,
         )?;
     }
 
@@ -226,7 +231,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         payer: user_wallet.key(),
         pool: pool.key(),
         amount_coin: amount_coin_in_pool,
-        amount_pc: amount_after_presale_target_subtracted,
+        amount_pc: amount_after_creator_fees,
         amount_lp_received: user_lp_amount,
         lp_mint: pool.lp_mint.unwrap(),
         vesting_started_at: pool.vesting_started_at.unwrap(),

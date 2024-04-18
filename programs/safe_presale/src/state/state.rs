@@ -79,16 +79,16 @@ pub const PURCHASE_RECEIPT_SIZE: usize = std::mem::size_of::<PurchaseReceipt>() 
 
 #[event]
 pub struct InitializedPoolEvent {
-    pub delegate: Option<Pubkey>, // for automating launching of pools
-    pub authority: Pubkey,        // creator of the pool
+    pub delegate: Option<Pubkey>,
+    pub authority: Pubkey,
     pub pool: Pubkey,
     pub mint: Pubkey,
-    pub presale_target: u64, // amount the creator will receive from the presale
-    pub presale_time_limit: i64, // presale ending time
-    pub creator_fee_basis_points: u16, // percentage of the lp tokens that the creator will receive
+    pub presale_target: u64,
+    pub presale_time_limit: i64,
+    pub creator_fee_basis_points: u16,
     pub total_supply: u64,
     pub decimal: u8,
-    pub vesting_period: u32, // vesting period for the lp tokens
+    pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
     pub requires_collection: bool,
 }
