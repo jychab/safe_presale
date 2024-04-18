@@ -20,7 +20,7 @@ use anchor_spl::{
 pub struct LaunchTokenAmmCtx<'info> {
     #[account(mut,
         constraint = pool.presale_target <= pool.liquidity_collected @CustomError::PresaleTargetNotMet,
-        constraint = !pool.launched @CustomError::TokenHasLaunched,
+        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
         constraint = pool.mint == amm_coin_mint.key(),
         seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
         bump = pool.bump
@@ -78,7 +78,7 @@ pub struct LaunchTokenAmmCtx<'info> {
     )]
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
-    #[account(address = public_keys::amm_v4_mainnet::id())]
+    #[account(address = public_keys::amm_v4_devnet::id())]
     pub raydium_amm_program: AccountInfo<'info>,
 }
 pub fn handler<'a, 'b, 'c: 'info, 'info>(
@@ -110,22 +110,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     if pool.presale_time_limit + GRACE_PERIOD < current_time {
         return Err(error!(CustomError::PoolHasExpired));
     }
-
-    pool.launched = true;
     pool.vesting_started_at = Some(current_time);
-    pool.vesting_period_end = Some(
-        current_time
-            .checked_add(pool.vesting_period.try_into().unwrap())
-            .ok_or(CustomError::IntegerOverflow)?,
-    );
     pool.lp_mint = Some(amm_lp_mint.key());
 
     let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];
-    let amount_coin_in_pool = pool
-        .total_supply
-        .checked_sub(pool.vested_supply)
-        .ok_or(CustomError::IntegerOverflow)?;
+    let amount_coin_in_pool = pool.total_supply;
     let amount_pc_in_pool = pool.liquidity_collected;
 
     transfer_amount(
@@ -149,14 +139,8 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         ctx.accounts.amm_pc_mint.decimals,
     )?;
 
-    let creator_fees = U128::from(amount_pc_in_pool)
-        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
-        .and_then(|result| result.checked_div(U128::from(10000)))
-        .and_then(|result| Some(result.as_u64()))
-        .ok_or(CustomError::IntegerOverflow)?;
-
-    let amount_after_creator_fees = amount_pc_in_pool
-        .checked_sub(creator_fees)
+    let amount_after_presale_target_subtracted = amount_pc_in_pool
+        .checked_sub(pool.presale_target)
         .ok_or(CustomError::IntegerOverflow)?;
 
     cpi_initialize2(
@@ -184,12 +168,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_token_lp.to_account_info(),
         nonce,
         open_time,
-        amount_after_creator_fees,
+        amount_after_presale_target_subtracted,
         amount_coin_in_pool,
     )?;
 
     let liquidity = Calculator::to_u64(
-        U128::from(amount_after_creator_fees)
+        U128::from(amount_after_presale_target_subtracted)
             .checked_mul(amount_coin_in_pool.into())
             .unwrap()
             .integer_sqrt()
@@ -234,7 +218,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
                     to: ctx.accounts.pool_authority.to_account_info(),
                 },
             ),
-            creator_fees,
+            pool.presale_target,
         )?;
     }
 
@@ -242,11 +226,10 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         payer: user_wallet.key(),
         pool: pool.key(),
         amount_coin: amount_coin_in_pool,
-        amount_pc: amount_after_creator_fees,
+        amount_pc: amount_after_presale_target_subtracted,
         amount_lp_received: user_lp_amount,
         lp_mint: pool.lp_mint.unwrap(),
         vesting_started_at: pool.vesting_started_at.unwrap(),
-        vesting_ending_at: pool.vesting_period_end.unwrap(),
     });
     Ok(())
 }

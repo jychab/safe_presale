@@ -22,12 +22,12 @@ pub struct BuyPresaleCtx<'info> {
 
     #[account(
         mut,
-        constraint = !pool.launched @CustomError::TokenHasLaunched,
         constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleHasEnded,
         seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
         bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
+
     #[account(
         init_if_needed,
         payer = payer,
@@ -69,7 +69,7 @@ pub struct BuyPresaleCtx<'info> {
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK: This is only used to deposit sol
+    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
         mut,
         address = public_keys::fee_collector::id()
@@ -127,7 +127,7 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         purchase_receipt.pool = pool.key();
         purchase_receipt.original_mint = ctx.accounts.nft.key();
         purchase_receipt.amount = amount;
-        purchase_receipt.mint_claimed = 0;
+        purchase_receipt.lp_claimed = 0;
         purchase_receipt.is_initialized = true;
     } else {
         purchase_receipt.amount = purchase_receipt

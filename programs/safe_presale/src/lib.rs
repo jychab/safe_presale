@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-declare_id!("memep6GYetMx84qtBgB9p1rncn81HMmZZa1UoxauYGt");
+declare_id!("4bHAVZYVKHvmoAf7XLRy2p2C19Ckj1RrNAEAGpf24Rys");
 
 pub mod error;
 pub mod instructions;
@@ -17,8 +17,8 @@ pub mod safe_presale {
     pub fn buy_presale(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         instructions::buy_presale::handler(ctx, amount)
     }
-    pub fn claim_rewards(ctx: Context<ClaimRewardsCtx>) -> Result<()> {
-        instructions::claim_rewards::handler(ctx)
+    pub fn withdraw_lp_tokens(ctx: Context<WithdrawLpCtx>) -> Result<()> {
+        instructions::withdraw_lp_tokens::handler(ctx)
     }
     pub fn init_pool(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         instructions::init_pool::handler(ctx, args)
@@ -28,9 +28,6 @@ pub mod safe_presale {
         collection_mint: Pubkey,
     ) -> Result<()> {
         instructions::create_purchase_authorisation::handler(ctx, collection_mint)
-    }
-    pub fn withdraw_lp_token<'info>(ctx: Context<WithdrawPoolLpToken<'info>>) -> Result<()> {
-        instructions::withdraw_lp_token::handler(ctx)
     }
     pub fn withdraw<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
         instructions::withdraw::handler(ctx)

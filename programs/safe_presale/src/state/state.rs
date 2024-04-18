@@ -29,7 +29,6 @@ pub const GRACE_PERIOD: i64 = 7 * 24 * 60 * 60;
 pub struct Pool {
     pub bump: u8,
     pub requires_collection: bool,
-    pub launched: bool,
     pub delegate: Option<Pubkey>,
     pub authority: Pubkey,
     pub mint: Pubkey,
@@ -38,13 +37,11 @@ pub struct Pool {
     pub liquidity_collected: u64,
     pub max_amount_per_purchase: Option<u64>,
     pub creator_fee_basis_points: u16,
-    pub vested_supply: u64,
     pub total_supply: u64,
     pub presale_target: u64,
     pub presale_time_limit: i64,
     pub vesting_period: u32,
     pub vesting_started_at: Option<i64>,
-    pub vesting_period_end: Option<i64>,
 }
 pub const POOL_PREFIX: &str = "pool";
 pub const POOL_SIZE: usize = std::mem::size_of::<Pool>() + 8;
@@ -67,8 +64,7 @@ pub struct PurchaseReceipt {
     pub amount: u64,
     pub lp_elligible: Option<u64>,
     pub original_mint: Pubkey,
-    pub mint_claimed: u64,
-    pub mint_elligible: Option<u64>,
+    pub lp_claimed: u64,
     pub last_claimed_at: Option<i64>,
 }
 
@@ -83,17 +79,16 @@ pub const PURCHASE_RECEIPT_SIZE: usize = std::mem::size_of::<PurchaseReceipt>() 
 
 #[event]
 pub struct InitializedPoolEvent {
-    pub delegate: Option<Pubkey>,
-    pub authority: Pubkey,
+    pub delegate: Option<Pubkey>, // for automating launching of pools
+    pub authority: Pubkey,        // creator of the pool
     pub pool: Pubkey,
     pub mint: Pubkey,
-    pub presale_target: u64,
-    pub presale_time_limit: i64,
-    pub creator_fee_basis_points: u16,
-    pub vested_supply: u64,
+    pub presale_target: u64, // amount the creator will receive from the presale
+    pub presale_time_limit: i64, // presale ending time
+    pub creator_fee_basis_points: u16, // percentage of the lp tokens that the creator will receive
     pub total_supply: u64,
     pub decimal: u8,
-    pub vesting_period: u32,
+    pub vesting_period: u32, // vesting period for the lp tokens
     pub max_amount_per_purchase: Option<u64>,
     pub requires_collection: bool,
 }
@@ -118,16 +113,14 @@ pub struct CheckClaimEvent {
     pub payer: Pubkey,
     pub pool: Pubkey,
     pub original_mint: Pubkey,
-    pub mint_elligible: u64,
-    pub lp_elligible: u64,
-    pub lp_elligible_after_fees: u64,
+    pub lp_elligible: u64, // this amount is including creators fee
 }
 
 #[event]
-pub struct ClaimRewardsEvent {
+pub struct WithdrawLpTokenEvent {
     pub payer: Pubkey,
     pub pool: Pubkey,
-    pub mint_claimed: u64,
+    pub lp_claimed: u64,
     pub last_claimed_at: i64,
     pub original_mint: Pubkey,
     pub original_mint_owner: Pubkey,
@@ -142,16 +135,6 @@ pub struct LaunchTokenAmmEvent {
     pub amount_lp_received: u64,
     pub lp_mint: Pubkey,
     pub vesting_started_at: i64,
-    pub vesting_ending_at: i64,
-}
-
-#[event]
-pub struct WithdrawLpTokenEvent {
-    pub payer: Pubkey,
-    pub pool: Pubkey,
-    pub original_mint: Pubkey,
-    pub amount_lp_withdrawn: u64,
-    pub lp_mint: Pubkey,
 }
 
 #[event]

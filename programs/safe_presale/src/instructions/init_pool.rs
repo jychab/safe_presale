@@ -9,11 +9,10 @@ pub struct InitPoolArgs {
     pub symbol: String,
     pub uri: String,
     pub decimals: u8,
-    pub presale_target: u64,
+    pub presale_target: u64, 
     pub presale_duration: u32,
     pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
-    pub vested_supply: u64,
     pub total_supply: u64,
     pub creator_fee_basis_points: u16,
     pub delegate: Option<Pubkey>,
@@ -71,21 +70,16 @@ pub struct InitPoolCtx<'info> {
 }
 
 pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
-    if args.vested_supply > args.total_supply {
-        return Err(error!(CustomError::VestingSupplyLargerThanTotalSupply))
-    }
     if args.creator_fee_basis_points > 10000 {
         return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
     }
     let pool = &mut ctx.accounts.pool;
     let current_time = Clock::get()?.unix_timestamp;
-    pool.launched = false;
     pool.bump = ctx.bumps.pool;
     pool.mint = ctx.accounts.reward_mint.key();
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
     pool.total_supply = args.total_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
-    pool.vested_supply = args.vested_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
     pool.presale_time_limit = current_time.checked_add(args.presale_duration.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
@@ -153,7 +147,6 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         presale_target: pool.presale_target,
         presale_time_limit: pool.presale_time_limit,
         creator_fee_basis_points: pool.creator_fee_basis_points,
-        vested_supply: pool.vested_supply,
         total_supply: pool.total_supply,
         vesting_period: pool.vesting_period,
         max_amount_per_purchase: pool.max_amount_per_purchase,

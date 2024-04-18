@@ -240,9 +240,8 @@ describe("Safe Presale", () => {
       uri: "https://www.madlads.com/mad_lads_logo.svg",
     };
     const totalSupply = new BN(1000000000);
-    const vestedSupply = new BN(500000000);
     const vestingPeriod = 3 * 24 * 60 * 60; //3days in seconds
-    const presaleDuration = 4; // in seconds
+    const presaleDuration = 10; // in seconds
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -271,7 +270,6 @@ describe("Safe Presale", () => {
           delegate: null,
           maxAmountPerPurchase: new BN(LAMPORTS_PER_SOL),
           vestingPeriod: vestingPeriod,
-          vestedSupply: vestedSupply,
           totalSupply: totalSupply,
           presaleDuration: presaleDuration,
           randomKey: new BN(randomKey),
@@ -294,7 +292,6 @@ describe("Safe Presale", () => {
       console.log(e);
     }
     const data = await program.account.pool.fetch(poolId);
-    assert(data.launched === false, "Not allowed for purchase");
     assert(
       data.authority.toBase58() === signer.publicKey.toString(),
       "Wrong authority"
@@ -312,14 +309,8 @@ describe("Safe Presale", () => {
         totalSupply.toNumber() * 10 ** rewardMint.decimal,
       "Wrong total supply"
     );
-    assert(
-      data.vestedSupply.toNumber() ===
-        vestedSupply.toNumber() * 10 ** rewardMint.decimal,
-      "Wrong vested supply"
-    );
     assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
     assert(data.vestingStartedAt === null, "Vesting should not have started");
-    assert(data.vestingPeriodEnd === null, "Vesting should not have ended");
   });
 
   step("Buy presale", async () => {
@@ -343,6 +334,9 @@ describe("Safe Presale", () => {
       await program.methods
         .buyPresale(amount)
         .accounts({
+          feeCollector: new PublicKey(
+            "73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"
+          ),
           purchaseAuthorisationRecord: null,
           nftMetadata: nftA.metadataAddress,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -367,10 +361,7 @@ describe("Safe Presale", () => {
       receipt.amount.toString() === amount.toString(),
       "Amount is not equal"
     );
-    assert(
-      receipt.mintClaimed.toNumber() === 0,
-      "Claim should not have started"
-    );
+    assert(receipt.lpClaimed.toNumber() === 0, "Claim should not have started");
     assert(
       receipt.originalMint.toBase58() === nftA.mintAddress.toBase58(),
       "Nft registered is wrong"
@@ -421,6 +412,9 @@ describe("Safe Presale", () => {
       await program.methods
         .buyPresale(amount)
         .accounts({
+          feeCollector: new PublicKey(
+            "73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"
+          ),
           purchaseAuthorisationRecord: null,
           nftMetadata: nftA.metadataAddress,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -439,7 +433,7 @@ describe("Safe Presale", () => {
       failed = true;
       console.log(e);
     }
-    assert(failed, "Should fail because you do not owned the nft");
+    assert(failed, "Should fail because you do not own the nft");
     const receipt = await program.account.purchaseReceipt.fetch(
       purchaseReceipt
     );
@@ -469,6 +463,9 @@ describe("Safe Presale", () => {
       await program.methods
         .buyPresale(amount)
         .accounts({
+          feeCollector: new PublicKey(
+            "73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"
+          ),
           purchaseAuthorisationRecord: null,
           nftMetadata: nftA.metadataAddress,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -603,6 +600,7 @@ describe("Safe Presale", () => {
   });
 
   step("Launch Token for AMM", async () => {
+    setTimeout(() => {}, 10000);
     const poolInfo = Liquidity.getAssociatedPoolKeys({
       version: 4,
       marketVersion: 3,
@@ -748,11 +746,6 @@ describe("Safe Presale", () => {
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const purchaseReceiptMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
-      purchaseReceipt,
-      true
-    );
     const purchaseReceiptLpTokenAccount = getAssociatedTokenAddressSync(
       poolData.lpMint,
       purchaseReceipt,
@@ -763,21 +756,13 @@ describe("Safe Presale", () => {
       poolId,
       true
     );
-    const poolMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
-      poolId,
-      true
-    );
     try {
       await program.methods
         .checkClaimEllgibility()
         .accounts({
           purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
-          purchaseReceiptMintTokenAccount: purchaseReceiptMintTokenAccount,
           poolLpTokenAccount: poolLpTokenAccount,
-          poolMintTokenAccount: poolMintTokenAccount,
           purchaseReceipt: purchaseReceipt,
-          rewardMint: rewardMint.mint,
           lpMint: poolData.lpMint,
           pool: poolId,
           payer: toWeb3JsPublicKey(signer.publicKey),
@@ -793,13 +778,20 @@ describe("Safe Presale", () => {
   });
 
   step("Claim rewards", async () => {
+    const poolData = await program.account.pool.fetch(poolId);
+
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const purchaseReceiptMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
+    const purchaseReceiptLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
       purchaseReceipt,
+      true
+    );
+    const nftOwnerLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
+      toWeb3JsPublicKey(signer.publicKey),
       true
     );
     const payerOriginalMintAta = getAssociatedTokenAddressSync(
@@ -807,23 +799,25 @@ describe("Safe Presale", () => {
       toWeb3JsPublicKey(signer.publicKey),
       true
     );
-    const payerRewardMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
-      toWeb3JsPublicKey(signer.publicKey),
+    const poolAuthorityLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
+      poolData.authority,
       true
     );
     try {
       const txId = await program.methods
-        .claimRewards()
+        .withdrawLpTokens()
         .accounts({
-          purchaseReceiptMintTokenAccount: purchaseReceiptMintTokenAccount,
+          purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
           purchaseReceipt: purchaseReceipt,
+          poolAuthority: poolData.authority,
+          poolAuthorityLpTokenAccount: poolAuthorityLpTokenAccount,
           pool: poolId,
+          lpMint: poolData.lpMint,
           nftOwner: signer.publicKey,
           nftMetadata: nftA.metadataAddress,
           nftOwnerNftTokenAccount: payerOriginalMintAta,
-          rewardMint: rewardMint.mint,
-          nftOwnerRewardMintTokenAccount: payerRewardMintTokenAccount,
+          nftOwnerLpTokenAccount: nftOwnerLpTokenAccount,
           payer: signer.publicKey,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,

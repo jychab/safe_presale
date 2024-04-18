@@ -29,7 +29,7 @@ pub struct Withdraw<'info> {
     )]
     pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
     #[account(
-        constraint = !pool.launched @CustomError::TokenHasLaunched,
+        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
         seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
         bump = pool.bump
     )]
