@@ -1,7 +1,5 @@
 use crate::error::CustomError;
 use crate::state::*;
-use crate::utils::Calculator;
-use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_spl::{
     associated_token::AssociatedToken,
@@ -10,10 +8,11 @@ use anchor_spl::{
 
 #[event_cpi]
 #[derive(Accounts)]
-pub struct WithdrawLpCtx<'info> {
+pub struct ClaimRewardCtx<'info> {
     #[account(
         mut,
-        constraint = purchase_receipt.lp_elligible.is_some() @CustomError::CheckClaimFirstBeforeClaiming,
+        constraint = !purchase_receipt.mint_claimed, 
+        constraint = purchase_receipt.mint_elligible.is_some() @CustomError::CheckClaimFirstBeforeClaiming,
         constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
         seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), purchase_receipt.pool.as_ref(), purchase_receipt.original_mint.as_ref()],
         bump = purchase_receipt.bump,
@@ -22,10 +21,10 @@ pub struct WithdrawLpCtx<'info> {
 
     #[account(
         mut,
-        constraint = purchase_receipt_lp_token_account.owner == purchase_receipt.key(),
-        constraint = purchase_receipt_lp_token_account.mint == pool.lp_mint.unwrap(),
+        constraint = purchase_receipt_reward_token_account.owner == purchase_receipt.key(),
+        constraint = purchase_receipt_reward_token_account.mint == pool.mint,
     )]
-    pub purchase_receipt_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub purchase_receipt_reward_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
@@ -43,10 +42,10 @@ pub struct WithdrawLpCtx<'info> {
     #[account(
         init_if_needed,
         payer = payer,
-        associated_token::mint = lp_mint,
+        associated_token::mint = reward_mint,
         associated_token::authority = nft_owner,
     )]
-    pub nft_owner_lp_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub nft_owner_reward_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     ///CHECK: Contraint is checked by other accounts
     pub nft_owner: AccountInfo<'info>,
@@ -60,9 +59,9 @@ pub struct WithdrawLpCtx<'info> {
     pub nft_metadata: AccountInfo<'info>,
 
     #[account(
-        constraint =  pool.lp_mint.is_some() && lp_mint.key() == pool.lp_mint.unwrap() @ CustomError::InvalidRewardMint
+        constraint =  pool.mint == reward_mint.key() @ CustomError::InvalidRewardMint
     )]
-    pub lp_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub reward_mint: Box<InterfaceAccount<'info, Mint>>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
@@ -72,7 +71,7 @@ pub struct WithdrawLpCtx<'info> {
     pub system_program: Program<'info, System>,
 }
 
-pub fn handler(ctx: Context<WithdrawLpCtx>) -> Result<()> {
+pub fn handler(ctx: Context<ClaimRewardCtx>) -> Result<()> {
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     // Delegated Claim Criteria
     // 1. Only allow delegated claiming if the nfts are frozen to the owner's wallet.
@@ -102,49 +101,8 @@ pub fn handler(ctx: Context<WithdrawLpCtx>) -> Result<()> {
     if !allowed {
         return Err(error!(CustomError::InvalidSigner));
     }
-
-    let pool = &ctx.accounts.pool;
-    let vesting_started_at = pool.vesting_started_at.unwrap();
-    let vesting_period = pool.vesting_period;
-    let vesting_period_end = vesting_started_at
-        .checked_add(vesting_period.into())
-        .unwrap();
-    let lp_elligible_to_claim = purchase_receipt.lp_elligible.unwrap();
-
-    let current_time = Clock::get()?.unix_timestamp;
-    let lp_claimable;
-    if current_time >= vesting_period_end {
-        if lp_elligible_to_claim == purchase_receipt.lp_claimed {
-            return Err(error!(CustomError::MaximumAmountClaimed));
-        }
-        lp_claimable = lp_elligible_to_claim
-            .checked_sub(purchase_receipt.lp_claimed)
-            .ok_or(CustomError::IntegerOverflow)?;
-    } else {
-        let last_claimed_at = purchase_receipt
-            .last_claimed_at
-            .unwrap_or(vesting_started_at);
-
-        let duration_since_last_claimed = Calculator::to_u64_from_i64(
-            current_time
-                .checked_sub(last_claimed_at)
-                .ok_or(CustomError::IntegerOverflow)?,
-        )?;
-        lp_claimable = U128::from(duration_since_last_claimed)
-            .checked_mul(U128::from(lp_elligible_to_claim))
-            .and_then(|result| result.checked_div(vesting_period.try_into().unwrap()))
-            .and_then(|result| Some(result.as_u64()))
-            .ok_or(CustomError::IntegerOverflow)?;
-    }
-
-    //update lp_claimed
-    purchase_receipt.lp_claimed = purchase_receipt
-        .lp_claimed
-        .checked_add(lp_claimable)
-        .ok_or(CustomError::IntegerOverflow)?;
-    //update last_claimed_at
-    purchase_receipt.last_claimed_at = Some(current_time);
-
+    let mint_elligible = purchase_receipt.mint_elligible.unwrap();
+    purchase_receipt.mint_claimed = true;
     let purchase_seed = &[
         PURCHASE_RECEIPT_PREFIX.as_bytes(),
         purchase_receipt.pool.as_ref(),
@@ -158,27 +116,26 @@ pub fn handler(ctx: Context<WithdrawLpCtx>) -> Result<()> {
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
             TransferChecked {
-                mint: ctx.accounts.lp_mint.to_account_info(),
+                mint: ctx.accounts.reward_mint.to_account_info(),
                 from: ctx
                     .accounts
-                    .purchase_receipt_lp_token_account
+                    .purchase_receipt_reward_token_account
                     .to_account_info(),
-                to: ctx.accounts.nft_owner_lp_token_account.to_account_info(),
+                to: ctx.accounts.nft_owner_reward_token_account.to_account_info(),
                 authority: purchase_receipt.to_account_info(),
             },
         )
         .with_signer(signer),
-        lp_claimable,
-        ctx.accounts.lp_mint.decimals,
+        mint_elligible,
+        ctx.accounts.reward_mint.decimals,
     )?;
 
-    emit_cpi!(WithdrawLpTokenEvent {
+    emit_cpi!(ClaimRewardEvent {
         payer: ctx.accounts.payer.key(),
-        pool: ctx.accounts.pool.key(),
-        lp_claimed: lp_claimable,
-        last_claimed_at: purchase_receipt.last_claimed_at.unwrap(),
-        original_mint: purchase_receipt.original_mint,
+        pool: purchase_receipt.pool,
+        mint_elligible: mint_elligible,
         original_mint_owner: ctx.accounts.nft_owner.key(),
+        original_mint: purchase_receipt.original_mint,
     });
 
     Ok(())

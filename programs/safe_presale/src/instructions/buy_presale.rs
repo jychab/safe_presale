@@ -83,9 +83,8 @@ pub struct BuyPresaleCtx<'info> {
 }
 
 pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
-    if amount == 0 {
-        return Err(error!(CustomError::NumberCannotBeZero));
-    }
+    require!(amount > 0, CustomError::NumberCannotBeZero);
+
     let purchase_receipt = &mut ctx.accounts.purchase_receipt;
     let pool = &mut ctx.accounts.pool;
     let mut allowed = true;
@@ -118,9 +117,17 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
             return Err(error!(CustomError::PurchaseAuthorisationRecordMissing));
         }
     }
-    if !allowed {
-        return Err(error!(CustomError::UnauthorisedCollection));
-    }
+    require!(allowed, CustomError::UnauthorisedCollection);
+
+    pool.liquidity_collected = pool
+        .liquidity_collected
+        .checked_add(amount)
+        .ok_or(CustomError::IntegerOverflow)?;
+
+    require!(
+        pool.liquidity_collected <= pool.presale_target,
+        CustomError::PresaleTargetExceeded
+    );
 
     if !purchase_receipt.is_initialized {
         purchase_receipt.bump = ctx.bumps.purchase_receipt;
@@ -128,6 +135,7 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         purchase_receipt.original_mint = ctx.accounts.nft.key();
         purchase_receipt.amount = amount;
         purchase_receipt.lp_claimed = 0;
+        purchase_receipt.mint_claimed = false;
         purchase_receipt.is_initialized = true;
     } else {
         purchase_receipt.amount = purchase_receipt
@@ -140,11 +148,6 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
     {
         return Err(error!(CustomError::AmountPurchaseExceeded));
     }
-
-    pool.liquidity_collected = pool
-        .liquidity_collected
-        .checked_add(amount)
-        .ok_or(CustomError::IntegerOverflow)?;
 
     transfer(
         CpiContext::new(

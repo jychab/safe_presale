@@ -10,6 +10,8 @@ pub enum CustomError {
     PresaleHasEnded,
     #[msg("Presale target not met")]
     PresaleTargetNotMet,
+    #[msg("Presale target exceeded")]
+    PresaleTargetExceeded,
     #[msg("Token already launched")]
     TokenHasLaunched,
     #[msg("Creator failed to launch project within 7 days.")]

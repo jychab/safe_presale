@@ -34,10 +34,15 @@ pub struct Pool {
     pub mint: Pubkey,
     pub lp_mint: Option<Pubkey>,
     pub lp_mint_supply: Option<u64>,
+    pub lp_mint_supply_for_creator: Option<u64>,
+    pub lp_mint_claimed_by_creator: u64,
+    pub lp_mint_last_claimed_by_creator: Option<i64>,
     pub liquidity_collected: u64,
     pub max_amount_per_purchase: Option<u64>,
     pub creator_fee_basis_points: u16,
-    pub total_supply: u64,
+    pub liquidity_pool_supply: u64,
+    pub initial_supply: u64,
+    pub initial_supply_for_creator: u64,
     pub presale_target: u64,
     pub presale_time_limit: i64,
     pub vesting_period: u32,
@@ -62,6 +67,8 @@ pub struct PurchaseReceipt {
     pub bump: u8,
     pub pool: Pubkey,
     pub amount: u64,
+    pub mint_elligible: Option<u64>,
+    pub mint_claimed: bool,
     pub lp_elligible: Option<u64>,
     pub original_mint: Pubkey,
     pub lp_claimed: u64,
@@ -86,7 +93,9 @@ pub struct InitializedPoolEvent {
     pub presale_target: u64,
     pub presale_time_limit: i64,
     pub creator_fee_basis_points: u16,
-    pub total_supply: u64,
+    pub liquidity_pool_supply: u64,
+    pub initial_supply: u64,
+    pub initial_supply_for_creator: u64,
     pub decimal: u8,
     pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
@@ -113,7 +122,32 @@ pub struct CheckClaimEvent {
     pub payer: Pubkey,
     pub pool: Pubkey,
     pub original_mint: Pubkey,
-    pub lp_elligible: u64, // this amount is including creators fee
+    pub lp_elligible: u64,
+    pub mint_elligible: u64,
+}
+
+#[event]
+pub struct ClaimRewardEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub original_mint: Pubkey,
+    pub original_mint_owner: Pubkey,
+    pub mint_elligible: u64,
+}
+
+#[event]
+pub struct ClaimRewardForCreatorEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub mint_elligible: u64,
+}
+
+#[event]
+pub struct WithdrawLpTokenForCreatorEvent {
+    pub payer: Pubkey,
+    pub pool: Pubkey,
+    pub lp_claimed: u64,
+    pub last_claimed_at: i64,
 }
 
 #[event]

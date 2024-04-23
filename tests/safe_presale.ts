@@ -239,7 +239,9 @@ describe("Safe Presale", () => {
       decimal: 5,
       uri: "https://www.madlads.com/mad_lads_logo.svg",
     };
-    const totalSupply = new BN(1000000000);
+    const liquidityPoolSupply = new BN(300000000);
+    const initialSupply = new BN(700000000);
+    const presaleTarget = new BN(LAMPORTS_PER_SOL * 0.5);
     const vestingPeriod = 3 * 24 * 60 * 60; //3days in seconds
     const presaleDuration = 10; // in seconds
 
@@ -265,12 +267,13 @@ describe("Safe Presale", () => {
           symbol: rewardMint.symbol,
           decimals: rewardMint.decimal,
           uri: rewardMint.uri,
-          presaleTarget: new BN(10),
+          presaleTarget: presaleTarget,
           creatorFeeBasisPoints: 500,
           delegate: null,
           maxAmountPerPurchase: new BN(LAMPORTS_PER_SOL),
           vestingPeriod: vestingPeriod,
-          totalSupply: totalSupply,
+          liquidityPoolSupply: liquidityPoolSupply,
+          initialSupply: initialSupply,
           presaleDuration: presaleDuration,
           randomKey: new BN(randomKey),
           requiresCollection: false,
@@ -305,9 +308,19 @@ describe("Safe Presale", () => {
       "Wrong reward mint"
     );
     assert(
-      data.totalSupply.toNumber() ===
-        totalSupply.toNumber() * 10 ** rewardMint.decimal,
-      "Wrong total supply"
+      data.initialSupply.toNumber() ===
+        initialSupply.toNumber() * 10 ** rewardMint.decimal,
+      "Wrong initial supply"
+    );
+    assert(
+      data.initialSupplyForCreator.toNumber() ===
+        initialSupply.toNumber() * 10 ** rewardMint.decimal * 0.05,
+      "Wrong initial supply for creator" + data.initialSupplyForCreator
+    );
+    assert(
+      data.liquidityPoolSupply.toNumber() ===
+        liquidityPoolSupply.toNumber() * 10 ** rewardMint.decimal,
+      "Wrong liquidity pool supply"
     );
     assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
     assert(data.vestingStartedAt === null, "Vesting should not have started");
@@ -380,6 +393,60 @@ describe("Safe Presale", () => {
       "WSOL amount not equal"
     );
   });
+
+  step("Buy presale exceed presale target", async () => {
+    [purchaseReceipt] = PublicKey.findProgramAddressSync(
+      [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
+      program.programId
+    );
+    const poolAndWSOLATA = getAssociatedTokenAddressSync(
+      new PublicKey(WSOL.mint),
+      poolId,
+      true
+    );
+    const payerOriginalMintAta = getAssociatedTokenAddressSync(
+      nftA.mintAddress,
+      toWeb3JsPublicKey(signer.publicKey),
+      true
+    );
+
+    const amount = new BN(0.5 * LAMPORTS_PER_SOL);
+    let failed = false;
+    try {
+      await program.methods
+        .buyPresale(amount)
+        .accounts({
+          feeCollector: new PublicKey(
+            "73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"
+          ),
+          purchaseAuthorisationRecord: null,
+          nftMetadata: nftA.metadataAddress,
+          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
+          wsolMint: new PublicKey(WSOL.mint),
+          poolWsolTokenAccount: poolAndWSOLATA,
+          purchaseReceipt: purchaseReceipt,
+          nftOwnerNftTokenAccount: payerOriginalMintAta,
+          pool: poolId,
+          nft: nftA.mintAddress,
+          payer: signer.publicKey,
+          systemProgram: SystemProgram.programId,
+        })
+        .signers([toWeb3JsKeypair(signer)])
+        .rpc();
+    } catch (e) {
+      failed = true;
+      console.log(e);
+    }
+    assert(failed, "Should fail because you do not own the nft");
+    const receipt = await program.account.purchaseReceipt.fetch(
+      purchaseReceipt
+    );
+    assert(
+      receipt.amount.toNumber() === 0.5 * LAMPORTS_PER_SOL,
+      "Amount is not equal"
+    );
+  });
+
   step("Buy presale without owning nft", async () => {
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
@@ -673,7 +740,6 @@ describe("Safe Presale", () => {
         .launchTokenAmm(poolInfo.nonce, new BN(Date.now()))
         .accounts({
           pool: poolId,
-          poolAuthority: signer.publicKey,
           userWallet: signer.publicKey,
           userTokenCoin: userTokenCoin,
           userTokenPc: userTokenPc,
@@ -751,8 +817,18 @@ describe("Safe Presale", () => {
       purchaseReceipt,
       true
     );
+    const purchaseReceiptRewardTokenAccount = getAssociatedTokenAddressSync(
+      poolData.mint,
+      purchaseReceipt,
+      true
+    );
     const poolLpTokenAccount = getAssociatedTokenAddressSync(
       poolData.lpMint,
+      poolId,
+      true
+    );
+    const poolRewardTokenAccount = getAssociatedTokenAddressSync(
+      poolData.mint,
       poolId,
       true
     );
@@ -760,6 +836,9 @@ describe("Safe Presale", () => {
       await program.methods
         .checkClaimEllgibility()
         .accounts({
+          purchaseReceiptRewardTokenAccount: purchaseReceiptRewardTokenAccount,
+          poolRewardTokenAccount: poolRewardTokenAccount,
+          rewardMint: rewardMint.mint,
           purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
           poolLpTokenAccount: poolLpTokenAccount,
           purchaseReceipt: purchaseReceipt,
@@ -777,7 +856,7 @@ describe("Safe Presale", () => {
     }
   });
 
-  step("Claim rewards", async () => {
+  step("Claim lp token", async () => {
     const poolData = await program.account.pool.fetch(poolId);
 
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
@@ -810,8 +889,6 @@ describe("Safe Presale", () => {
         .accounts({
           purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
           purchaseReceipt: purchaseReceipt,
-          poolAuthority: poolData.authority,
-          poolAuthorityLpTokenAccount: poolAuthorityLpTokenAccount,
           pool: poolId,
           lpMint: poolData.lpMint,
           nftOwner: signer.publicKey,

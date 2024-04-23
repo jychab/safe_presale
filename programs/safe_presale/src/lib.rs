@@ -20,6 +20,15 @@ pub mod safe_presale {
     pub fn withdraw_lp_tokens(ctx: Context<WithdrawLpCtx>) -> Result<()> {
         instructions::withdraw_lp_tokens::handler(ctx)
     }
+    pub fn withdraw_lp_tokens_for_creators(ctx: Context<WithdrawLpCreatorCtx>) -> Result<()> {
+        instructions::withdraw_lp_tokens_for_creator::handler(ctx)
+    }
+    pub fn claim_reward_token(ctx: Context<ClaimRewardCtx>) -> Result<()> {
+        instructions::claim_reward_token::handler(ctx)
+    }
+    pub fn claim_reward_token_for_creators(ctx: Context<ClaimRewardCreatorCtx>) -> Result<()> {
+        instructions::claim_reward_token_for_creator::handler(ctx)
+    }
     pub fn init_pool(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         instructions::init_pool::handler(ctx, args)
     }

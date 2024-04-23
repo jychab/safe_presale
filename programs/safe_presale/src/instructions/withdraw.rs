@@ -83,7 +83,7 @@ pub fn handler<'info>(ctx: Context<Withdraw<'info>>) -> Result<()> {
         if current_time < pool.presale_time_limit {
             return Err(error!(CustomError::UnauthorizedAtCurrentTime));
         }
-        if pool.presale_target <= pool.liquidity_collected {
+        if pool.presale_target == pool.liquidity_collected {
             return Err(error!(CustomError::WaitingForCreatorToLaunch));
         }
     }

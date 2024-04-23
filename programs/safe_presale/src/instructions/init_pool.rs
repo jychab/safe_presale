@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 use anchor_spl::{associated_token::AssociatedToken, token_2022::spl_token_2022::instruction::AuthorityType, token_interface::{mint_to, set_authority, Mint, MintTo, SetAuthority, TokenAccount, TokenInterface}};
 use mpl_token_metadata::{instructions::CreateMetadataAccountV3CpiBuilder, types::DataV2};
-use crate::{error::CustomError, state::{InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}};
+use crate::{error::CustomError, state::{InitializedPoolEvent, Pool, MINT_PREFIX, POOL_PREFIX, POOL_SIZE}, utils::U128};
 
 #[derive(AnchorSerialize, AnchorDeserialize)]
 pub struct InitPoolArgs {
@@ -13,7 +13,8 @@ pub struct InitPoolArgs {
     pub presale_duration: u32,
     pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
-    pub total_supply: u64,
+    pub liquidity_pool_supply: u64,
+    pub initial_supply: u64,
     pub creator_fee_basis_points: u16,
     pub delegate: Option<Pubkey>,
     pub random_key: u64,
@@ -70,16 +71,16 @@ pub struct InitPoolCtx<'info> {
 }
 
 pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
-    if args.creator_fee_basis_points > 10000 {
-        return Err(error!(CustomError::CreatorBasisPointsExceedMaximumAmount))
-    }
+    require!(args.creator_fee_basis_points <= 10000, CustomError::CreatorBasisPointsExceedMaximumAmount);
+
     let pool = &mut ctx.accounts.pool;
     let current_time = Clock::get()?.unix_timestamp;
     pool.bump = ctx.bumps.pool;
     pool.mint = ctx.accounts.reward_mint.key();
     pool.authority = ctx.accounts.payer.key();
     pool.liquidity_collected = 0;
-    pool.total_supply = args.total_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
+    pool.liquidity_pool_supply = args.liquidity_pool_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
+    pool.initial_supply = args.initial_supply.checked_mul(10u64.checked_pow(args.decimals.into()).unwrap()).unwrap();
     pool.presale_time_limit = current_time.checked_add(args.presale_duration.try_into().unwrap()).ok_or(CustomError::IntegerOverflow)?;
     pool.vesting_period = args.vesting_period;
     pool.creator_fee_basis_points = args.creator_fee_basis_points;
@@ -87,6 +88,11 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.delegate = args.delegate;
     pool.max_amount_per_purchase = args.max_amount_per_purchase;
     pool.requires_collection = args.requires_collection;
+    pool.initial_supply_for_creator = U128::from(pool.initial_supply)
+    .checked_mul(args.creator_fee_basis_points.try_into().unwrap())
+    .and_then(|result| result.checked_div(U128::from(10000)))
+    .and_then(|result| Some(result.as_u64()))
+    .ok_or(CustomError::IntegerOverflow)?;
 
 
     let seeds = &[
@@ -107,7 +113,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
             authority: pool.to_account_info(),
         })
         .with_signer(signer),
-        pool.total_supply
+        pool.liquidity_pool_supply.checked_add(pool.initial_supply).unwrap()
     )?;
 
     CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
@@ -147,7 +153,9 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         presale_target: pool.presale_target,
         presale_time_limit: pool.presale_time_limit,
         creator_fee_basis_points: pool.creator_fee_basis_points,
-        total_supply: pool.total_supply,
+        liquidity_pool_supply: pool.liquidity_pool_supply,
+        initial_supply: pool.initial_supply,
+        initial_supply_for_creator: pool.initial_supply_for_creator,
         vesting_period: pool.vesting_period,
         max_amount_per_purchase: pool.max_amount_per_purchase,
         requires_collection: args.requires_collection,
