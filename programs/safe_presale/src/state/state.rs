@@ -1,25 +1,10 @@
 use anchor_lang::{prelude::*, solana_program::program_pack::IsInitialized};
 
-pub mod public_keys {
-    pub mod amm_v4_mainnet {
-        anchor_lang::declare_id!("675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8");
-    }
-    pub mod amm_v4_devnet {
-        anchor_lang::declare_id!("HWy1jotHpo6UqeQxx49dpYYdQB8wj9Qk9MdxwjLvDHB8");
-    }
-    pub mod clmm_mainnet {
-        anchor_lang::declare_id!("CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK");
-    }
-    pub mod clmm_devnet {
-        anchor_lang::declare_id!("devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH");
-    }
-    pub mod wsol {
-        anchor_lang::declare_id!("So11111111111111111111111111111111111111112");
-    }
-    pub mod fee_collector {
-        anchor_lang::declare_id!("73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg");
-    }
-}
+pub const FEE_COLLECTOR: &str = "73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg";
+
+pub const RAYDIUM_AMM_V4_DEVNET: &str = "HWy1jotHpo6UqeQxx49dpYYdQB8wj9Qk9MdxwjLvDHB8";
+
+pub const RAYDIUM_AMM_V4_MAINNET: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
 
 pub const MINT_PREFIX: &str = "mint";
 
@@ -28,6 +13,7 @@ pub const GRACE_PERIOD: i64 = 7 * 24 * 60 * 60;
 #[account]
 pub struct Pool {
     pub bump: u8,
+    pub quote_mint: Pubkey,
     pub requires_collection: bool,
     pub delegate: Option<Pubkey>,
     pub authority: Pubkey,
@@ -100,6 +86,7 @@ pub struct InitializedPoolEvent {
     pub vesting_period: u32,
     pub max_amount_per_purchase: Option<u64>,
     pub requires_collection: bool,
+    pub quote_mint: Pubkey,
 }
 
 #[event]
@@ -176,6 +163,6 @@ pub struct WithdrawEvent {
     pub payer: Pubkey,
     pub pool: Pubkey,
     pub original_mint: Pubkey,
-    pub amount_wsol_withdrawn: u64,
+    pub amount_withdrawn: u64,
     pub original_mint_owner: Pubkey,
 }

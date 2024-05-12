@@ -1,11 +1,9 @@
+use std::str::FromStr;
+
 use crate::{error::CustomError, state::*};
-use anchor_lang::{
-    prelude::*,
-    system_program::{transfer, Transfer},
-};
-use anchor_spl::{
-    associated_token::AssociatedToken,
-    token_interface::{sync_native, Mint, SyncNative, TokenAccount, TokenInterface},
+use anchor_lang::prelude::*;
+use anchor_spl::token_interface::{
+    transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked,
 };
 use mpl_token_metadata::accounts::Metadata;
 #[event_cpi]
@@ -23,30 +21,20 @@ pub struct BuyPresaleCtx<'info> {
     #[account(
         mut,
         constraint = Clock::get()?.unix_timestamp < pool.presale_time_limit @CustomError::PresaleHasEnded,
-        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
-        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
 
     #[account(
-        init_if_needed,
-        payer = payer,
-        associated_token::mint = wsol_mint,
-        associated_token::authority = pool
+        mut,
+        constraint = pool_quote_mint_token_account.mint == quote_mint.key(),
+        constraint = pool_quote_mint_token_account.owner == pool.key(),
     )]
-    pub pool_wsol_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub pool_quote_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     #[account(
-        constraint = nft_owner_nft_token_account.amount == 1,
-        constraint = nft_owner_nft_token_account.mint == nft.key(),
-        constraint = nft_owner_nft_token_account.owner == payer.key() @CustomError::InvalidSigner
+        constraint = quote_mint.key() == pool.quote_mint,
     )]
-    pub nft_owner_nft_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
-
-    #[account(
-        address = public_keys::wsol::id()
-    )]
-    pub wsol_mint: Box<InterfaceAccount<'info, Mint>>,
+    pub quote_mint: Box<InterfaceAccount<'info, Mint>>,
     #[account(
         constraint = nft.supply == 1 @CustomError::NftIsNotNonFungible
     )]
@@ -58,28 +46,33 @@ pub struct BuyPresaleCtx<'info> {
         seeds::program = mpl_token_metadata::ID
     )]
     /// CHECK: This is not dangerous because we don't read or write from this account
-    pub nft_metadata: AccountInfo<'info>,
+    pub nft_metadata: UncheckedAccount<'info>,
 
     #[account(
-        seeds = [PURCHASE_AUTHORISATION_PREFIX.as_bytes(), pool.key().as_ref(), purchase_authorisation_record.collection_mint.as_ref()],
-        bump = purchase_authorisation_record.bump
+       constraint = purchase_authorisation_record.pool == pool.key()
     )]
     pub purchase_authorisation_record: Option<Box<Account<'info, PurchaseAuthorisationRecord>>>,
 
     #[account(mut)]
     pub payer: Signer<'info>,
 
-    /// CHECK: This is not dangerous because we don't read or write from this account
     #[account(
         mut,
-        address = public_keys::fee_collector::id()
+        constraint = payer_quote_mint_token_account.mint == quote_mint.key(),
+        constraint = payer_quote_mint_token_account.owner == payer.key(),
     )]
-    pub fee_collector: AccountInfo<'info>,
+    pub payer_quote_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
+
+    #[account(
+        mut,
+        constraint = fee_collector_quote_mint_token_account.mint == quote_mint.key(),
+        constraint = fee_collector_quote_mint_token_account.owner == Pubkey::from_str(FEE_COLLECTOR).unwrap(),
+    )]
+    pub fee_collector_quote_mint_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     pub system_program: Program<'info, System>,
 
     pub token_program: Interface<'info, TokenInterface>,
-    pub associated_token_program: Program<'info, AssociatedToken>,
 }
 
 pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
@@ -149,33 +142,42 @@ pub fn handler(ctx: Context<BuyPresaleCtx>, amount: u64) -> Result<()> {
         return Err(error!(CustomError::AmountPurchaseExceeded));
     }
 
-    transfer(
+    transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.payer.to_account_info(),
-                to: ctx.accounts.fee_collector.to_account_info(),
+            TransferChecked {
+                from: ctx
+                    .accounts
+                    .payer_quote_mint_token_account
+                    .to_account_info(),
+                to: ctx
+                    .accounts
+                    .fee_collector_quote_mint_token_account
+                    .to_account_info(),
+                mint: ctx.accounts.quote_mint.to_account_info(),
+                authority: ctx.accounts.payer.to_account_info(),
             },
         ),
         amount.checked_div(100).unwrap(),
+        ctx.accounts.quote_mint.decimals,
     )?;
 
-    transfer(
+    transfer_checked(
         CpiContext::new(
             ctx.accounts.token_program.to_account_info(),
-            Transfer {
-                from: ctx.accounts.payer.to_account_info(),
-                to: ctx.accounts.pool_wsol_token_account.to_account_info(),
+            TransferChecked {
+                from: ctx
+                    .accounts
+                    .payer_quote_mint_token_account
+                    .to_account_info(),
+                to: ctx.accounts.pool_quote_mint_token_account.to_account_info(),
+                mint: ctx.accounts.quote_mint.to_account_info(),
+                authority: ctx.accounts.payer.to_account_info(),
             },
         ),
         amount,
+        ctx.accounts.quote_mint.decimals,
     )?;
-    sync_native(CpiContext::new(
-        ctx.accounts.token_program.to_account_info(),
-        SyncNative {
-            account: ctx.accounts.pool_wsol_token_account.to_account_info(),
-        },
-    ))?;
 
     emit_cpi!(PurchasedPresaleEvent {
         payer: ctx.accounts.payer.key(),

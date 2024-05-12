@@ -14,8 +14,6 @@ pub struct ClaimRewardCtx<'info> {
         constraint = !purchase_receipt.mint_claimed, 
         constraint = purchase_receipt.mint_elligible.is_some() @CustomError::CheckClaimFirstBeforeClaiming,
         constraint = purchase_receipt.original_mint == nft_owner_nft_token_account.mint @ CustomError::MintNotAllowed,
-        seeds = [PURCHASE_RECEIPT_PREFIX.as_bytes(), purchase_receipt.pool.as_ref(), purchase_receipt.original_mint.as_ref()],
-        bump = purchase_receipt.bump,
     )]
     pub purchase_receipt: Box<Account<'info, PurchaseReceipt>>,
 
@@ -28,8 +26,6 @@ pub struct ClaimRewardCtx<'info> {
 
     #[account(
         constraint = pool.key() == purchase_receipt.pool @CustomError::InvalidPool,
-        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
-        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
 

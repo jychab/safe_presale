@@ -3,19 +3,19 @@ seeds = false
 skip-lint = false
 
 [programs.mainnet]
-safe_presale = "memep6GYetMx84qtBgB9p1rncn81HMmZZa1UoxauYGt"
+safe_presale = "Cbq8bFSvGDjxmqEfPcxaujgfW1ZgggzYgDwcQRNY4jr"
 
 [programs.localnet]
-safe_presale = "memep6GYetMx84qtBgB9p1rncn81HMmZZa1UoxauYGt"
+safe_presale = "Cbq8bFSvGDjxmqEfPcxaujgfW1ZgggzYgDwcQRNY4jr"
 
 [programs.devnet]
-safe_presale = "memep6GYetMx84qtBgB9p1rncn81HMmZZa1UoxauYGt"
+safe_presale = "Cbq8bFSvGDjxmqEfPcxaujgfW1ZgggzYgDwcQRNY4jr"
 
 [registry]
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "devnet"
+cluster = "https://mainnet.helius-rpc.com/?api-key=67cc99fc-f14e-499c-9507-48127506901f"
 wallet = "~/.config/solana/id.json"
 
 [scripts]

@@ -34,8 +34,6 @@ pub struct WithdrawLpCreatorCtx<'info> {
         mut, 
         constraint = payer.key() == pool.authority @CustomError::InvalidSigner,
         constraint = pool.vesting_started_at.is_some() @CustomError::PresaleIsStillOngoing,
-        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
-        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
 

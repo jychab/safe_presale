@@ -19,6 +19,7 @@ pub struct InitPoolArgs {
     pub delegate: Option<Pubkey>,
     pub random_key: u64,
     pub requires_collection: bool,
+    pub quote_mint: Pubkey,
 }
 
 #[event_cpi]
@@ -88,6 +89,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     pool.delegate = args.delegate;
     pool.max_amount_per_purchase = args.max_amount_per_purchase;
     pool.requires_collection = args.requires_collection;
+    pool.quote_mint = args.quote_mint;
     pool.initial_supply_for_creator = U128::from(pool.initial_supply)
     .checked_mul(args.creator_fee_basis_points.try_into().unwrap())
     .and_then(|result| result.checked_div(U128::from(10000)))
@@ -102,7 +104,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
     ];
     let signer = &[&seeds[..]];
 
-    //mint all supply to pool then revoke freeze and mint authority for token
+    //mint all supply to pool then revoke mint authority for token
     mint_to(
         CpiContext::new(ctx.accounts.token_program.to_account_info(), MintTo {
             mint: ctx.accounts.reward_mint.to_account_info(),
@@ -113,7 +115,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
             authority: pool.to_account_info(),
         })
         .with_signer(signer),
-        pool.liquidity_pool_supply.checked_add(pool.initial_supply).unwrap()
+        pool.liquidity_pool_supply.checked_add(pool.initial_supply).ok_or(CustomError::IntegerOverflow)?
     )?;
 
     CreateMetadataAccountV3CpiBuilder::new(&ctx.accounts.mpl_token_program.to_account_info())
@@ -159,6 +161,7 @@ pub fn handler(ctx: Context<InitPoolCtx>, args: InitPoolArgs) -> Result<()> {
         vesting_period: pool.vesting_period,
         max_amount_per_purchase: pool.max_amount_per_purchase,
         requires_collection: args.requires_collection,
+        quote_mint: pool.quote_mint,
     });
 
     Ok(())
