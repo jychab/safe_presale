@@ -10,6 +10,8 @@ pub enum CustomError {
     PresaleHasEnded,
     #[msg("Presale target not met")]
     PresaleTargetNotMet,
+    #[msg("Presale target exceeded")]
+    PresaleTargetExceeded,
     #[msg("Token already launched")]
     TokenHasLaunched,
     #[msg("Creator failed to launch project within 7 days.")]
@@ -40,8 +42,6 @@ pub enum CustomError {
     MaximumAmountClaimed,
     #[msg("Either presale or vesting is still ongoing")]
     UnauthorizedAtCurrentTime,
-    #[msg("Vesting Supply cannot be larger than Total Supply")]
-    VestingSupplyLargerThanTotalSupply,
     #[msg("Creator Fees Basis Points cannot exceed 10000")]
     CreatorBasisPointsExceedMaximumAmount,
     #[msg("Amount cannot be zero")]

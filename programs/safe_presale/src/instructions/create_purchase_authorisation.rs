@@ -16,11 +16,9 @@ pub struct CreatePurchaseAuthorizationCtx<'info> {
     pub purchase_authorisation_record: Box<Account<'info, PurchaseAuthorisationRecord>>,
 
     #[account(
-        constraint = !pool.launched @CustomError::TokenHasLaunched,
+        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
         constraint = pool.requires_collection,
         constraint = pool.authority == payer.key(),
-        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
-        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
 

@@ -1,29 +1,25 @@
+use std::str::FromStr;
+
 use crate::error::CustomError;
 use crate::state::*;
 use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
-use anchor_lang::system_program::{transfer, Transfer};
 use anchor_spl::associated_token;
 use anchor_spl::associated_token::Create;
 use anchor_spl::{
     associated_token::AssociatedToken,
-    token_interface::{
-        close_account, transfer_checked, CloseAccount, Mint, TokenAccount, TokenInterface,
-        TransferChecked,
-    },
+    token_interface::{transfer_checked, Mint, TokenAccount, TokenInterface, TransferChecked},
 };
 
 #[event_cpi]
 #[derive(Accounts)]
 pub struct LaunchTokenAmmCtx<'info> {
     #[account(mut,
-        constraint = pool.presale_target <= pool.liquidity_collected @CustomError::PresaleTargetNotMet,
-        constraint = !pool.launched @CustomError::TokenHasLaunched,
+        constraint = pool.presale_target == pool.liquidity_collected @CustomError::PresaleTargetNotMet,
+        constraint = pool.vesting_started_at.is_none() @CustomError::TokenHasLaunched,
         constraint = pool.mint == amm_coin_mint.key(),
-        seeds = [POOL_PREFIX.as_bytes(), pool.mint.as_ref()],
-        bump = pool.bump
     )]
     pub pool: Box<Account<'info, Pool>>,
     /// Pays to mint the position
@@ -31,11 +27,6 @@ pub struct LaunchTokenAmmCtx<'info> {
         constraint = pool.authority == user_wallet.key() || (pool.delegate.is_some() && pool.delegate.unwrap() == user_wallet.key()),
     )]
     pub user_wallet: Signer<'info>,
-    /// CHECK: verified by constraints
-    #[account(mut,
-        constraint = pool.authority == pool_authority.key()
-    )]
-    pub pool_authority: AccountInfo<'info>,
     #[account(
         init_if_needed,
         payer = user_wallet,
@@ -74,11 +65,13 @@ pub struct LaunchTokenAmmCtx<'info> {
     pub amm_coin_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
     #[account(
-        constraint = amm_pc_mint.key() == public_keys::wsol::id()
+        constraint = amm_pc_mint.key() == pool.quote_mint,
     )]
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
-    #[account(address = public_keys::amm_v4_mainnet::id())]
+    #[account(
+        address = Pubkey::from_str(RAYDIUM_AMM_V4_MAINNET).unwrap()
+    )]
     pub raydium_amm_program: AccountInfo<'info>,
 }
 pub fn handler<'a, 'b, 'c: 'info, 'info>(
@@ -110,22 +103,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
     if pool.presale_time_limit + GRACE_PERIOD < current_time {
         return Err(error!(CustomError::PoolHasExpired));
     }
-
-    pool.launched = true;
     pool.vesting_started_at = Some(current_time);
-    pool.vesting_period_end = Some(
-        current_time
-            .checked_add(pool.vesting_period.try_into().unwrap())
-            .ok_or(CustomError::IntegerOverflow)?,
-    );
     pool.lp_mint = Some(amm_lp_mint.key());
 
     let pool_seed = &[POOL_PREFIX.as_bytes(), pool.mint.as_ref(), &[pool.bump]];
     let signer = &[&pool_seed[..]];
-    let amount_coin_in_pool = pool
-        .total_supply
-        .checked_sub(pool.vested_supply)
-        .ok_or(CustomError::IntegerOverflow)?;
+    let amount_coin_in_pool = pool.liquidity_pool_supply;
     let amount_pc_in_pool = pool.liquidity_collected;
 
     transfer_amount(
@@ -148,16 +131,6 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         amount_pc_in_pool,
         ctx.accounts.amm_pc_mint.decimals,
     )?;
-
-    let creator_fees = U128::from(amount_pc_in_pool)
-        .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
-        .and_then(|result| result.checked_div(U128::from(10000)))
-        .and_then(|result| Some(result.as_u64()))
-        .ok_or(CustomError::IntegerOverflow)?;
-
-    let amount_after_creator_fees = amount_pc_in_pool
-        .checked_sub(creator_fees)
-        .ok_or(CustomError::IntegerOverflow)?;
 
     cpi_initialize2(
         token_program.to_account_info(),
@@ -184,12 +157,12 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_token_lp.to_account_info(),
         nonce,
         open_time,
-        amount_after_creator_fees,
+        amount_pc_in_pool,
         amount_coin_in_pool,
     )?;
 
     let liquidity = Calculator::to_u64(
-        U128::from(amount_after_creator_fees)
+        U128::from(amount_pc_in_pool)
             .checked_mul(amount_coin_in_pool.into())
             .unwrap()
             .integer_sqrt()
@@ -216,37 +189,23 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_lp_amount,
         ctx.accounts.amm_coin_mint.decimals,
     )?;
-    close_account(CpiContext::new(
-        token_program.to_account_info(),
-        CloseAccount {
-            account: user_token_pc.to_account_info(),
-            destination: user_wallet.to_account_info(),
-            authority: user_wallet.to_account_info(),
-        },
-    ))?;
 
-    if user_wallet.key() != ctx.accounts.pool_authority.key() {
-        transfer(
-            CpiContext::new(
-                system_program.to_account_info(),
-                Transfer {
-                    from: user_wallet.to_account_info(),
-                    to: ctx.accounts.pool_authority.to_account_info(),
-                },
-            ),
-            creator_fees,
-        )?;
-    }
+    pool.lp_mint_supply_for_creator = Some(
+        U128::from(user_lp_amount)
+            .checked_mul(pool.creator_fee_basis_points.try_into().unwrap())
+            .and_then(|result| result.checked_div(U128::from(10000)))
+            .and_then(|result| Some(result.as_u64()))
+            .ok_or(CustomError::IntegerOverflow)?,
+    );
 
     emit_cpi!(LaunchTokenAmmEvent {
         payer: user_wallet.key(),
         pool: pool.key(),
         amount_coin: amount_coin_in_pool,
-        amount_pc: amount_after_creator_fees,
+        amount_pc: amount_pc_in_pool,
         amount_lp_received: user_lp_amount,
         lp_mint: pool.lp_mint.unwrap(),
         vesting_started_at: pool.vesting_started_at.unwrap(),
-        vesting_ending_at: pool.vesting_period_end.unwrap(),
     });
     Ok(())
 }

@@ -1,4 +1,3 @@
-import { SafePresale } from "../target/types/safe_presale";
 import {
   MPL_TOKEN_METADATA_PROGRAM_ID,
   TokenStandard,
@@ -41,6 +40,9 @@ import {
   getAssociatedTokenAddressSync,
   getAccount,
   transfer,
+  NATIVE_MINT,
+  getOrCreateAssociatedTokenAccount,
+  createSyncNativeInstruction,
 } from "@solana/spl-token";
 import { step, xstep } from "mocha-steps";
 import {
@@ -58,8 +60,11 @@ import * as anchor from "@coral-xyz/anchor";
 import { BN, Program } from "@coral-xyz/anchor";
 import { TOKEN_PROGRAM_ID } from "@coral-xyz/anchor/dist/cjs/utils/token";
 import { assert } from "chai";
-import { getSimulationUnits } from "./utils";
-import crypto from "crypto";
+import {
+  getOrCreateAssociatedTokenAccountInstruction,
+  getSimulationUnits,
+} from "./utils";
+import { SafePresale } from "../target/types/safe_presale";
 
 describe("Safe Presale", () => {
   // Configure the client to use the local cluster.
@@ -82,6 +87,7 @@ describe("Safe Presale", () => {
     ])
   );
   umi.use(mplTokenMetadata()).use(keypairIdentity(signer));
+  console.log(signer.publicKey);
 
   let poolId: PublicKey;
   let rewardMint: {
@@ -239,10 +245,11 @@ describe("Safe Presale", () => {
       decimal: 5,
       uri: "https://www.madlads.com/mad_lads_logo.svg",
     };
-    const totalSupply = new BN(1000000000);
-    const vestedSupply = new BN(500000000);
+    const liquidityPoolSupply = new BN(300000000);
+    const initialSupply = new BN(700000000);
+    const presaleTarget = new BN(LAMPORTS_PER_SOL * 0.5);
     const vestingPeriod = 3 * 24 * 60 * 60; //3days in seconds
-    const presaleDuration = 4; // in seconds
+    const presaleDuration = 30; // in seconds
 
     const [rewardMint_metadata] = PublicKey.findProgramAddressSync(
       [
@@ -262,31 +269,27 @@ describe("Safe Presale", () => {
     try {
       await program.methods
         .initPool({
+          quoteMint: NATIVE_MINT,
           name: rewardMint.name,
           symbol: rewardMint.symbol,
           decimals: rewardMint.decimal,
           uri: rewardMint.uri,
-          presaleTarget: new BN(10),
+          presaleTarget: presaleTarget,
           creatorFeeBasisPoints: 500,
           delegate: null,
           maxAmountPerPurchase: new BN(LAMPORTS_PER_SOL),
           vestingPeriod: vestingPeriod,
-          vestedSupply: vestedSupply,
-          totalSupply: totalSupply,
+          liquidityPoolSupply: liquidityPoolSupply,
+          initialSupply: initialSupply,
           presaleDuration: presaleDuration,
           randomKey: new BN(randomKey),
           requiresCollection: false,
         })
         .accounts({
           payer: signer.publicKey,
-          pool: poolId,
-          rewardMint: rewardMint.mint,
           rewardMintMetadata: rewardMint_metadata,
           poolRewardMintTokenAccount: poolAndMintRewardAta,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
-          mplTokenProgram: MPL_TOKEN_METADATA_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
         })
         .signers([toWeb3JsKeypair(signer)])
         .rpc();
@@ -294,7 +297,6 @@ describe("Safe Presale", () => {
       console.log(e);
     }
     const data = await program.account.pool.fetch(poolId);
-    assert(data.launched === false, "Not allowed for purchase");
     assert(
       data.authority.toBase58() === signer.publicKey.toString(),
       "Wrong authority"
@@ -308,18 +310,22 @@ describe("Safe Presale", () => {
       "Wrong reward mint"
     );
     assert(
-      data.totalSupply.toNumber() ===
-        totalSupply.toNumber() * 10 ** rewardMint.decimal,
-      "Wrong total supply"
+      data.initialSupply.toNumber() ===
+        initialSupply.toNumber() * 10 ** rewardMint.decimal,
+      "Wrong initial supply"
     );
     assert(
-      data.vestedSupply.toNumber() ===
-        vestedSupply.toNumber() * 10 ** rewardMint.decimal,
-      "Wrong vested supply"
+      data.initialSupplyForCreator.toNumber() ===
+        initialSupply.toNumber() * 10 ** rewardMint.decimal * 0.05,
+      "Wrong initial supply for creator" + data.initialSupplyForCreator
+    );
+    assert(
+      data.liquidityPoolSupply.toNumber() ===
+        liquidityPoolSupply.toNumber() * 10 ** rewardMint.decimal,
+      "Wrong liquidity pool supply"
     );
     assert(data.vestingPeriod === vestingPeriod, "Wrong vesting period");
     assert(data.vestingStartedAt === null, "Vesting should not have started");
-    assert(data.vestingPeriodEnd === null, "Vesting should not have ended");
   });
 
   step("Buy presale", async () => {
@@ -327,36 +333,79 @@ describe("Safe Presale", () => {
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const poolAndWSOLATA = getAssociatedTokenAddressSync(
-      new PublicKey(WSOL.mint),
-      poolId,
-      true
-    );
-    const payerOriginalMintAta = getAssociatedTokenAddressSync(
-      nftA.mintAddress,
-      toWeb3JsPublicKey(signer.publicKey),
-      true
-    );
+    const quoteMint = NATIVE_MINT;
+    const ixs = [];
+    const poolQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        poolId,
+        true,
+        program.provider.connection
+      );
+    const payerQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        toWeb3JsPublicKey(signer.publicKey),
+        true,
+        program.provider.connection
+      );
+    const feeCollectorQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        new PublicKey("73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"),
+        true,
+        program.provider.connection
+      );
 
-    const amount = new BN(0.5 * LAMPORTS_PER_SOL);
-    try {
-      await program.methods
-        .buyPresale(amount)
-        .accounts({
-          purchaseAuthorisationRecord: null,
-          nftMetadata: nftA.metadataAddress,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          wsolMint: new PublicKey(WSOL.mint),
-          poolWsolTokenAccount: poolAndWSOLATA,
-          purchaseReceipt: purchaseReceipt,
-          nftOwnerNftTokenAccount: payerOriginalMintAta,
-          pool: poolId,
-          nft: nftA.mintAddress,
-          payer: signer.publicKey,
-          systemProgram: SystemProgram.programId,
+    const amount = 0.2 * LAMPORTS_PER_SOL;
+    if (quoteMint === NATIVE_MINT) {
+      ixs.push(
+        SystemProgram.transfer({
+          fromPubkey: toWeb3JsPublicKey(signer.publicKey),
+          toPubkey: payerQuoteMintTokenAccount,
+          lamports: Math.round(amount * 1.1),
         })
-        .signers([toWeb3JsKeypair(signer)])
-        .rpc();
+      );
+      ixs.push(createSyncNativeInstruction(payerQuoteMintTokenAccount));
+    }
+    try {
+      ixs.push(
+        await program.methods
+          .buyPresale(new BN(amount))
+          .accounts({
+            quoteMint: quoteMint,
+            purchaseAuthorisationRecord: null,
+            poolQuoteMintTokenAccount: poolQuoteMintTokenAccount,
+            payerQuoteMintTokenAccount: payerQuoteMintTokenAccount,
+            feeCollectorQuoteMintTokenAccount:
+              feeCollectorQuoteMintTokenAccount,
+            program: program.programId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            pool: poolId,
+            nft: nftA.mintAddress,
+            payer: signer.publicKey,
+          })
+          .signers([toWeb3JsKeypair(signer)])
+          .instruction()
+      );
+      const tx = new VersionedTransaction(
+        new TransactionMessage({
+          instructions: ixs,
+          recentBlockhash: (
+            await program.provider.connection.getLatestBlockhash()
+          ).blockhash,
+          payerKey: toWeb3JsPublicKey(signer.publicKey),
+        }).compileToV0Message()
+      );
+      tx.sign([toWeb3JsKeypair(signer)]);
+      const txId = await program.provider.connection.sendTransaction(tx);
+      await program.provider.connection.confirmTransaction(txId);
     } catch (e) {
       console.log(e);
     }
@@ -367,79 +416,210 @@ describe("Safe Presale", () => {
       receipt.amount.toString() === amount.toString(),
       "Amount is not equal"
     );
-    assert(
-      receipt.mintClaimed.toNumber() === 0,
-      "Claim should not have started"
-    );
+    assert(receipt.lpClaimed.toNumber() === 0, "Claim should not have started");
     assert(
       receipt.originalMint.toBase58() === nftA.mintAddress.toBase58(),
       "Nft registered is wrong"
     );
     const pool = await program.account.pool.fetch(poolId);
     assert(
-      pool.liquidityCollected.toNumber() === amount.toNumber(),
+      pool.liquidityCollected.toNumber() === amount,
       "Pool Liquidity not equal"
     );
     const poolWsolAmount = await getAccount(
       program.provider.connection,
-      poolAndWSOLATA
+      poolQuoteMintTokenAccount
+    );
+    assert(Number(poolWsolAmount.amount) === amount, "WSOL amount not equal");
+  });
+
+  step("Buy presale exceed presale target", async () => {
+    [purchaseReceipt] = PublicKey.findProgramAddressSync(
+      [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
+      program.programId
+    );
+    const ixs = [];
+    const quoteMint = NATIVE_MINT;
+    const poolQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        poolId,
+        true,
+        program.provider.connection
+      );
+    const payerQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        toWeb3JsPublicKey(signer.publicKey),
+        true,
+        program.provider.connection
+      );
+    const feeCollectorQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        new PublicKey("73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"),
+        true,
+        program.provider.connection
+      );
+
+    const amount = 0.5 * LAMPORTS_PER_SOL;
+    if (quoteMint === NATIVE_MINT) {
+      ixs.push(
+        SystemProgram.transfer({
+          fromPubkey: toWeb3JsPublicKey(signer.publicKey),
+          toPubkey: payerQuoteMintTokenAccount,
+          lamports: Math.round(amount * 1.1),
+        })
+      );
+      ixs.push(createSyncNativeInstruction(payerQuoteMintTokenAccount));
+    }
+    let failed = false;
+    try {
+      ixs.push(
+        await program.methods
+          .buyPresale(new BN(amount))
+          .accounts({
+            quoteMint: quoteMint,
+            purchaseAuthorisationRecord: null,
+            poolQuoteMintTokenAccount: poolQuoteMintTokenAccount,
+            payerQuoteMintTokenAccount: payerQuoteMintTokenAccount,
+            feeCollectorQuoteMintTokenAccount:
+              feeCollectorQuoteMintTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            pool: poolId,
+            nft: nftA.mintAddress,
+            payer: signer.publicKey,
+          })
+          .signers([toWeb3JsKeypair(signer)])
+          .instruction()
+      );
+      const tx = new VersionedTransaction(
+        new TransactionMessage({
+          instructions: ixs,
+          recentBlockhash: (
+            await program.provider.connection.getLatestBlockhash()
+          ).blockhash,
+          payerKey: toWeb3JsPublicKey(signer.publicKey),
+        }).compileToV0Message()
+      );
+      tx.sign([toWeb3JsKeypair(signer)]);
+      const txId = await program.provider.connection.sendTransaction(tx);
+      await program.provider.connection.confirmTransaction(txId);
+    } catch (e) {
+      failed = true;
+      console.log(e);
+    }
+    assert(failed, "Should fail because you do not own the nft");
+    const receipt = await program.account.purchaseReceipt.fetch(
+      purchaseReceipt
     );
     assert(
-      Number(poolWsolAmount.amount) === amount.toNumber(),
-      "WSOL amount not equal"
+      receipt.amount.toNumber() === 0.2 * LAMPORTS_PER_SOL,
+      "Amount is not equal"
     );
   });
+
   step("Buy presale without owning nft", async () => {
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const poolAndWSOLATA = getAssociatedTokenAddressSync(
-      new PublicKey(WSOL.mint),
-      poolId,
-      true
-    );
-    const payerOriginalMintAta = getAssociatedTokenAddressSync(
-      nftA.mintAddress,
-      toWeb3JsPublicKey(signer.publicKey),
-      true
-    );
+    const quoteMint = NATIVE_MINT;
     const randomPayer = Keypair.generate();
     const ix = SystemProgram.transfer({
       fromPubkey: toWeb3JsPublicKey(signer.publicKey),
       toPubkey: randomPayer.publicKey,
-      lamports: 0.1 * LAMPORTS_PER_SOL,
+      lamports: 0.4 * LAMPORTS_PER_SOL,
     });
     await sendAndConfirmTransaction(
       program.provider.connection,
       new Transaction().add(ix),
       [toWeb3JsKeypair(signer)]
     );
-    const amount = new BN(0.1 * LAMPORTS_PER_SOL);
+
+    const ixs = [];
+    const poolQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        randomPayer.publicKey,
+        quoteMint,
+        poolId,
+        true,
+        program.provider.connection
+      );
+    const payerQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        randomPayer.publicKey,
+        quoteMint,
+        randomPayer.publicKey,
+        true,
+        program.provider.connection
+      );
+    const feeCollectorQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        randomPayer.publicKey,
+        quoteMint,
+        new PublicKey("73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"),
+        true,
+        program.provider.connection
+      );
+    const amount = 0.3 * LAMPORTS_PER_SOL;
+    if (quoteMint === NATIVE_MINT) {
+      ixs.push(
+        SystemProgram.transfer({
+          fromPubkey: randomPayer.publicKey,
+          toPubkey: payerQuoteMintTokenAccount,
+          lamports: Math.round(amount * 1.1),
+        })
+      );
+      ixs.push(createSyncNativeInstruction(payerQuoteMintTokenAccount));
+    }
+
     let failed = false;
     try {
-      await program.methods
-        .buyPresale(amount)
-        .accounts({
-          purchaseAuthorisationRecord: null,
-          nftMetadata: nftA.metadataAddress,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          wsolMint: new PublicKey(WSOL.mint),
-          poolWsolTokenAccount: poolAndWSOLATA,
-          purchaseReceipt: purchaseReceipt,
-          nftOwnerNftTokenAccount: payerOriginalMintAta,
-          pool: poolId,
-          nft: nftA.mintAddress,
-          payer: randomPayer.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([randomPayer])
-        .rpc();
+      ixs.push(
+        await program.methods
+          .buyPresale(new BN(amount))
+          .accounts({
+            quoteMint: quoteMint,
+            purchaseAuthorisationRecord: null,
+            poolQuoteMintTokenAccount: poolQuoteMintTokenAccount,
+            payerQuoteMintTokenAccount: payerQuoteMintTokenAccount,
+            feeCollectorQuoteMintTokenAccount:
+              feeCollectorQuoteMintTokenAccount,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            pool: poolId,
+            nft: nftA.mintAddress,
+            payer: randomPayer.publicKey,
+          })
+          .signers([randomPayer])
+          .instruction()
+      );
+      const tx = new VersionedTransaction(
+        new TransactionMessage({
+          instructions: ixs,
+          recentBlockhash: (
+            await program.provider.connection.getLatestBlockhash()
+          ).blockhash,
+          payerKey: randomPayer.publicKey,
+        }).compileToV0Message()
+      );
+      tx.sign([randomPayer]);
+      const txId = await program.provider.connection.sendTransaction(tx);
+      await program.provider.connection.confirmTransaction(txId);
     } catch (e) {
       failed = true;
       console.log(e);
     }
-    assert(failed, "Should fail because you do not owned the nft");
+    assert(!failed, "Should not fail");
     const receipt = await program.account.purchaseReceipt.fetch(
       purchaseReceipt
     );
@@ -453,36 +633,80 @@ describe("Safe Presale", () => {
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const poolAndWSOLATA = getAssociatedTokenAddressSync(
-      new PublicKey(WSOL.mint),
-      poolId,
-      true
-    );
-    const payerOriginalMintAta = getAssociatedTokenAddressSync(
-      nftA.mintAddress,
-      toWeb3JsPublicKey(signer.publicKey),
-      true
-    );
-    const amount = new BN(0.6 * LAMPORTS_PER_SOL);
+    const ixs = [];
+    const quoteMint = NATIVE_MINT;
+    const poolQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        poolId,
+        true,
+        program.provider.connection
+      );
+    const payerQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        toWeb3JsPublicKey(signer.publicKey),
+        true,
+        program.provider.connection
+      );
+    const feeCollectorQuoteMintTokenAccount =
+      await getOrCreateAssociatedTokenAccountInstruction(
+        ixs,
+        toWeb3JsPublicKey(signer.publicKey),
+        quoteMint,
+        new PublicKey("73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg"),
+        true,
+        program.provider.connection
+      );
+
+    const amount = 0.6 * LAMPORTS_PER_SOL;
+    if (quoteMint === NATIVE_MINT) {
+      ixs.push(
+        SystemProgram.transfer({
+          fromPubkey: toWeb3JsPublicKey(signer.publicKey),
+          toPubkey: payerQuoteMintTokenAccount,
+          lamports: Math.round(amount * 1.1),
+        })
+      );
+      ixs.push(createSyncNativeInstruction(payerQuoteMintTokenAccount));
+    }
+
     let failed = false;
     try {
-      await program.methods
-        .buyPresale(amount)
-        .accounts({
-          purchaseAuthorisationRecord: null,
-          nftMetadata: nftA.metadataAddress,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          wsolMint: new PublicKey(WSOL.mint),
-          poolWsolTokenAccount: poolAndWSOLATA,
-          purchaseReceipt: purchaseReceipt,
-          nftOwnerNftTokenAccount: payerOriginalMintAta,
-          pool: poolId,
-          nft: nftA.mintAddress,
-          payer: signer.publicKey,
-          systemProgram: SystemProgram.programId,
-        })
-        .signers([toWeb3JsKeypair(signer)])
-        .rpc();
+      ixs.push(
+        await program.methods
+          .buyPresale(new BN(amount))
+          .accounts({
+            quoteMint: quoteMint,
+            purchaseAuthorisationRecord: null,
+            poolQuoteMintTokenAccount: poolQuoteMintTokenAccount,
+            payerQuoteMintTokenAccount: payerQuoteMintTokenAccount,
+            feeCollectorQuoteMintTokenAccount:
+              feeCollectorQuoteMintTokenAccount,
+            pool: poolId,
+            tokenProgram: TOKEN_PROGRAM_ID,
+            nft: nftA.mintAddress,
+            payer: signer.publicKey,
+          })
+          .signers([toWeb3JsKeypair(signer)])
+          .instruction()
+      );
+      const tx = new VersionedTransaction(
+        new TransactionMessage({
+          instructions: ixs,
+          recentBlockhash: (
+            await program.provider.connection.getLatestBlockhash()
+          ).blockhash,
+          payerKey: toWeb3JsPublicKey(signer.publicKey),
+        }).compileToV0Message()
+      );
+      tx.sign([toWeb3JsKeypair(signer)]);
+      const txId = await program.provider.connection.sendTransaction(tx);
+      await program.provider.connection.confirmTransaction(txId);
     } catch (e) {
       failed = true;
       console.log(e);
@@ -603,6 +827,7 @@ describe("Safe Presale", () => {
   });
 
   step("Launch Token for AMM", async () => {
+    setTimeout(() => {}, 30000);
     const poolInfo = Liquidity.getAssociatedPoolKeys({
       version: 4,
       marketVersion: 3,
@@ -675,19 +900,14 @@ describe("Safe Presale", () => {
         .launchTokenAmm(poolInfo.nonce, new BN(Date.now()))
         .accounts({
           pool: poolId,
-          poolAuthority: signer.publicKey,
           userWallet: signer.publicKey,
           userTokenCoin: userTokenCoin,
           userTokenPc: userTokenPc,
           poolTokenPc: poolTokenPc,
           poolTokenCoin: poolTokenCoin,
-          rent: RENT_PROGRAM_ID,
-          systemProgram: SYSTEM_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           ammCoinMint: poolInfo.baseMint,
           ammPcMint: poolInfo.quoteMint,
-          raydiumAmmProgram: DEVNET_PROGRAM_ID.AmmV4,
         })
         .signers([toWeb3JsKeypair(signer)])
         .remainingAccounts(remainingAccounts)
@@ -748,13 +968,13 @@ describe("Safe Presale", () => {
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const purchaseReceiptMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
+    const purchaseReceiptLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
       purchaseReceipt,
       true
     );
-    const purchaseReceiptLpTokenAccount = getAssociatedTokenAddressSync(
-      poolData.lpMint,
+    const purchaseReceiptRewardTokenAccount = getAssociatedTokenAddressSync(
+      poolData.mint,
       purchaseReceipt,
       true
     );
@@ -763,8 +983,8 @@ describe("Safe Presale", () => {
       poolId,
       true
     );
-    const poolMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
+    const poolRewardTokenAccount = getAssociatedTokenAddressSync(
+      poolData.mint,
       poolId,
       true
     );
@@ -772,17 +992,15 @@ describe("Safe Presale", () => {
       await program.methods
         .checkClaimEllgibility()
         .accounts({
-          purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
-          purchaseReceiptMintTokenAccount: purchaseReceiptMintTokenAccount,
-          poolLpTokenAccount: poolLpTokenAccount,
-          poolMintTokenAccount: poolMintTokenAccount,
-          purchaseReceipt: purchaseReceipt,
+          purchaseReceiptRewardTokenAccount: purchaseReceiptRewardTokenAccount,
+          poolRewardTokenAccount: poolRewardTokenAccount,
           rewardMint: rewardMint.mint,
+          purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
+          poolLpTokenAccount: poolLpTokenAccount,
+          purchaseReceipt: purchaseReceipt,
           lpMint: poolData.lpMint,
           pool: poolId,
           payer: toWeb3JsPublicKey(signer.publicKey),
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
           tokenProgram: TOKEN_PROGRAM_ID,
         })
         .signers([toWeb3JsKeypair(signer)])
@@ -792,14 +1010,21 @@ describe("Safe Presale", () => {
     }
   });
 
-  step("Claim rewards", async () => {
+  step("Claim lp token", async () => {
+    const poolData = await program.account.pool.fetch(poolId);
+
     [purchaseReceipt] = PublicKey.findProgramAddressSync(
       [Buffer.from("receipt"), poolId.toBuffer(), nftA.mintAddress.toBuffer()],
       program.programId
     );
-    const purchaseReceiptMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
+    const purchaseReceiptLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
       purchaseReceipt,
+      true
+    );
+    const nftOwnerLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
+      toWeb3JsPublicKey(signer.publicKey),
       true
     );
     const payerOriginalMintAta = getAssociatedTokenAddressSync(
@@ -807,27 +1032,24 @@ describe("Safe Presale", () => {
       toWeb3JsPublicKey(signer.publicKey),
       true
     );
-    const payerRewardMintTokenAccount = getAssociatedTokenAddressSync(
-      rewardMint.mint,
-      toWeb3JsPublicKey(signer.publicKey),
+    const poolAuthorityLpTokenAccount = getAssociatedTokenAddressSync(
+      poolData.lpMint,
+      poolData.authority,
       true
     );
     try {
       const txId = await program.methods
-        .claimRewards()
+        .withdrawLpTokens()
         .accounts({
-          purchaseReceiptMintTokenAccount: purchaseReceiptMintTokenAccount,
+          purchaseReceiptLpTokenAccount: purchaseReceiptLpTokenAccount,
           purchaseReceipt: purchaseReceipt,
           pool: poolId,
+          lpMint: poolData.lpMint,
           nftOwner: signer.publicKey,
-          nftMetadata: nftA.metadataAddress,
           nftOwnerNftTokenAccount: payerOriginalMintAta,
-          rewardMint: rewardMint.mint,
-          nftOwnerRewardMintTokenAccount: payerRewardMintTokenAccount,
+          nftOwnerLpTokenAccount: nftOwnerLpTokenAccount,
           payer: signer.publicKey,
-          associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID,
           tokenProgram: TOKEN_PROGRAM_ID,
-          systemProgram: SystemProgram.programId,
         })
         .signers([toWeb3JsKeypair(signer)])
         .rpc();
