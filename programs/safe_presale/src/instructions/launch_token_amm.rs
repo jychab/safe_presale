@@ -69,7 +69,7 @@ pub struct LaunchTokenAmmCtx<'info> {
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
     #[account(
-        address = Pubkey::from_str(RAYDIUM_CPMM_V4_DEVNET).unwrap()
+        address = Pubkey::from_str(RAYDIUM_CPMM_V4_MAINNET).unwrap()
     )]
     pub raydium_amm_program: AccountInfo<'info>,
 }
@@ -151,8 +151,6 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         init_0_amount = amount_pc_in_pool;
         init_1_amount = amount_coin_in_pool;
     };
-    msg!("{}, {}", token_0_mint.key(), token_1_mint.key());
-
     cpi_initialize(
         user_wallet.to_account_info(),
         remaining_accounts.get(3).unwrap().to_account_info(),
