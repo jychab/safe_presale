@@ -15,7 +15,7 @@ safe_presale = "Cbq8bFSvGDjxmqEfPcxaujgfW1ZgggzYgDwcQRNY4jr"
 url = "https://api.apr.dev"
 
 [provider]
-cluster = "https://devnet.helius-rpc.com/?api-key=67cc99fc-f14e-499c-9507-48127506901f"
+cluster = "https://api.mainnet-beta.solana.com"
 wallet = "~/.config/solana/id.json"
 
 [scripts]
