@@ -2,9 +2,9 @@ use anchor_lang::{prelude::*, solana_program::program_pack::IsInitialized};
 
 pub const FEE_COLLECTOR: &str = "73hCTYpoZNdFiwbh2PrW99ykAyNcQVfUwPMUhu9ogNTg";
 
-pub const RAYDIUM_AMM_V4_DEVNET: &str = "HWy1jotHpo6UqeQxx49dpYYdQB8wj9Qk9MdxwjLvDHB8";
+pub const RAYDIUM_CPMM_V4_DEVNET: &str = "CPMDWBwJDtYax9qW7AyRuVC19Cc4L4Vcy4n2BHAbHkCW";
 
-pub const RAYDIUM_AMM_V4_MAINNET: &str = "675kPX9MHTjS2zt1qfr1NYHuzeLXfQM9H24wFSUt1Mp8";
+pub const RAYDIUM_CPMM_V4_MAINNET: &str = "CPMMoo8L3F4NbTegBCKVNunggL7H1ZpdTHKxQB5qKP1C";
 
 pub const MINT_PREFIX: &str = "mint";
 

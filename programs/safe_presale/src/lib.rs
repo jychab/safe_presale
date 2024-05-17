@@ -46,9 +46,8 @@ pub mod safe_presale {
     }
     pub fn launch_token_amm<'a, 'b, 'c: 'info, 'info>(
         ctx: Context<'a, 'b, 'c, 'info, LaunchTokenAmmCtx<'info>>,
-        nonce: u8,
         open_time: u64,
     ) -> Result<()> {
-        instructions::launch_token_amm::handler(ctx, nonce, open_time)
+        instructions::launch_token_amm::handler(ctx, open_time)
     }
 }
