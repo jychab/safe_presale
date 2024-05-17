@@ -2,7 +2,6 @@ use std::str::FromStr;
 
 use crate::error::CustomError;
 use crate::state::*;
-use crate::utils::Calculator;
 use crate::utils::U128;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program;
@@ -70,13 +69,12 @@ pub struct LaunchTokenAmmCtx<'info> {
     pub amm_pc_mint: Box<InterfaceAccount<'info, Mint>>,
     /// CHECK: Checked by cpi
     #[account(
-        address = Pubkey::from_str(RAYDIUM_AMM_V4_MAINNET).unwrap()
+        address = Pubkey::from_str(RAYDIUM_CPMM_V4_DEVNET).unwrap()
     )]
     pub raydium_amm_program: AccountInfo<'info>,
 }
 pub fn handler<'a, 'b, 'c: 'info, 'info>(
     ctx: Context<'a, 'b, 'c, 'info, LaunchTokenAmmCtx<'info>>,
-    nonce: u8,
     open_time: u64,
 ) -> Result<()> {
     let current_time = Clock::get()?.unix_timestamp;
@@ -132,49 +130,63 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         ctx.accounts.amm_pc_mint.decimals,
     )?;
 
-    cpi_initialize2(
+    let token_0_mint;
+    let user_token_0_mint;
+    let token_1_mint;
+    let user_token_1_mint;
+    let init_0_amount;
+    let init_1_amount;
+    if ctx.accounts.amm_coin_mint.key() < ctx.accounts.amm_pc_mint.key() {
+        token_0_mint = ctx.accounts.amm_coin_mint.to_account_info();
+        token_1_mint = ctx.accounts.amm_pc_mint.to_account_info();
+        user_token_0_mint = user_token_coin.to_account_info();
+        user_token_1_mint = user_token_pc.to_account_info();
+        init_0_amount = amount_coin_in_pool;
+        init_1_amount = amount_pc_in_pool;
+    } else {
+        token_0_mint = ctx.accounts.amm_pc_mint.to_account_info();
+        token_1_mint = ctx.accounts.amm_coin_mint.to_account_info();
+        user_token_0_mint = user_token_pc.to_account_info();
+        user_token_1_mint = user_token_coin.to_account_info();
+        init_0_amount = amount_pc_in_pool;
+        init_1_amount = amount_coin_in_pool;
+    };
+    msg!("{}, {}", token_0_mint.key(), token_1_mint.key());
+
+    cpi_initialize(
+        user_wallet.to_account_info(),
+        remaining_accounts.get(3).unwrap().to_account_info(),
+        remaining_accounts.get(4).unwrap().to_account_info(),
+        remaining_accounts.get(5).unwrap().to_account_info(),
+        token_0_mint,
+        token_1_mint,
+        amm_lp_mint.to_account_info(),
+        user_token_0_mint.to_account_info(),
+        user_token_1_mint.to_account_info(),
+        user_token_lp.to_account_info(),
+        remaining_accounts.get(6).unwrap().to_account_info(),
+        remaining_accounts.get(7).unwrap().to_account_info(),
+        remaining_accounts.get(8).unwrap().to_account_info(),
+        remaining_accounts.get(9).unwrap().to_account_info(),
+        token_program.to_account_info(),
+        token_program.to_account_info(),
         token_program.to_account_info(),
         associated_token_program.to_account_info(),
         system_program.to_account_info(),
         ctx.accounts.rent.to_account_info(),
         ctx.accounts.raydium_amm_program.to_account_info(),
-        remaining_accounts.get(3).unwrap().to_account_info(),
-        remaining_accounts.get(4).unwrap().to_account_info(),
-        remaining_accounts.get(5).unwrap().to_account_info(),
-        amm_lp_mint.to_account_info(),
-        ctx.accounts.amm_coin_mint.to_account_info(),
-        ctx.accounts.amm_pc_mint.to_account_info(),
-        remaining_accounts.get(6).unwrap().to_account_info(),
-        remaining_accounts.get(7).unwrap().to_account_info(),
-        remaining_accounts.get(8).unwrap().to_account_info(),
-        remaining_accounts.get(9).unwrap().to_account_info(),
-        remaining_accounts.get(10).unwrap().to_account_info(),
-        remaining_accounts.get(11).unwrap().to_account_info(),
-        remaining_accounts.get(12).unwrap().to_account_info(),
-        user_wallet.to_account_info(),
-        user_token_coin.to_account_info(),
-        user_token_pc.to_account_info(),
-        user_token_lp.to_account_info(),
-        nonce,
+        init_0_amount,
+        init_1_amount,
         open_time,
-        amount_pc_in_pool,
-        amount_coin_in_pool,
     )?;
 
-    let liquidity = Calculator::to_u64(
-        U128::from(amount_pc_in_pool)
-            .checked_mul(amount_coin_in_pool.into())
-            .unwrap()
-            .integer_sqrt()
-            .as_u128(),
-    )?;
-    let user_lp_amount = liquidity
-        .checked_sub(
-            (10u64)
-                .checked_pow(ctx.accounts.amm_coin_mint.decimals.into()) //lp mint decimal is the same as coin mint decimals
-                .unwrap(),
-        )
-        .unwrap();
+    let liquidity = U128::from(init_0_amount)
+        .checked_mul(init_1_amount.into())
+        .unwrap()
+        .integer_sqrt()
+        .as_u64();
+    let lock_lp_amount = 100;
+    let user_lp_amount = liquidity.checked_sub(lock_lp_amount).unwrap();
 
     pool.lp_mint_supply = Some(user_lp_amount);
     transfer_lp_token(
@@ -187,7 +199,7 @@ pub fn handler<'a, 'b, 'c: 'info, 'info>(
         user_token_lp.to_account_info(),
         pool_token_lp.to_account_info(),
         user_lp_amount,
-        ctx.accounts.amm_coin_mint.decimals,
+        9,
     )?;
 
     pool.lp_mint_supply_for_creator = Some(
@@ -251,91 +263,81 @@ fn transfer_lp_token<'info>(
 }
 
 #[inline(never)]
-fn cpi_initialize2<'a, 'b, 'c: 'info, 'info>(
+fn cpi_initialize<'a, 'b, 'c: 'info, 'info>(
+    user_wallet: AccountInfo<'info>,
+    amm_config: AccountInfo<'info>,
+    amm_authority: AccountInfo<'info>,
+    amm_pool: AccountInfo<'info>,
+    token_0_mint: AccountInfo<'info>,
+    token_1_mint: AccountInfo<'info>,
+    amm_lp_mint: AccountInfo<'info>,
+    user_token_0_mint: AccountInfo<'info>,
+    user_token_1_mint: AccountInfo<'info>,
+    user_token_lp: AccountInfo<'info>,
+    token_0_vault: AccountInfo<'info>,
+    token_1_vault: AccountInfo<'info>,
+    create_fee_destination: AccountInfo<'info>,
+    observation_state: AccountInfo<'info>,
     token_program: AccountInfo<'info>,
+    token_0_program: AccountInfo<'info>,
+    token_1_program: AccountInfo<'info>,
     associated_token_program: AccountInfo<'info>,
     system_program: AccountInfo<'info>,
     rent: AccountInfo<'info>,
     amm_program: AccountInfo<'info>,
-    amm_pool: AccountInfo<'info>,
-    amm_authority: AccountInfo<'info>,
-    amm_open_orders: AccountInfo<'info>,
-    amm_lp_mint: AccountInfo<'info>,
-    amm_coin_mint: AccountInfo<'info>,
-    amm_pc_mint: AccountInfo<'info>,
-    amm_coin_vault: AccountInfo<'info>,
-    amm_pc_vault: AccountInfo<'info>,
-    amm_target_orders: AccountInfo<'info>,
-    amm_config: AccountInfo<'info>,
-    create_fee_destination: AccountInfo<'info>,
-    market_program: AccountInfo<'info>,
-    market: AccountInfo<'info>,
-    user_wallet: AccountInfo<'info>,
-    user_token_coin: AccountInfo<'info>,
-    user_token_pc: AccountInfo<'info>,
-    user_token_lp: AccountInfo<'info>,
-    nonce: u8,
+    init_0_amount: u64,
+    init_1_amount: u64,
     open_time: u64,
-    init_pc_amount: u64,
-    init_coin_amount: u64,
 ) -> Result<()> {
     let accounts = vec![
-        // spl & sys
+        AccountMeta::new(user_wallet.key(), true),
+        AccountMeta::new_readonly(amm_config.key(), false),
+        AccountMeta::new_readonly(amm_authority.key(), false),
+        AccountMeta::new(amm_pool.key(), false),
+        AccountMeta::new_readonly(token_0_mint.key(), false),
+        AccountMeta::new_readonly(token_1_mint.key(), false),
+        AccountMeta::new(amm_lp_mint.key(), false),
+        AccountMeta::new(user_token_0_mint.key(), false),
+        AccountMeta::new(user_token_1_mint.key(), false),
+        AccountMeta::new(user_token_lp.key(), false),
+        AccountMeta::new(token_0_vault.key(), false),
+        AccountMeta::new(token_1_vault.key(), false),
+        AccountMeta::new(create_fee_destination.key(), false),
+        AccountMeta::new(observation_state.key(), false),
         AccountMeta::new_readonly(token_program.key(), false),
+        AccountMeta::new_readonly(token_0_program.key(), false),
+        AccountMeta::new_readonly(token_1_program.key(), false),
         AccountMeta::new_readonly(associated_token_program.key(), false),
         AccountMeta::new_readonly(system_program.key(), false),
         AccountMeta::new_readonly(rent.key(), false),
-        // amm
-        AccountMeta::new(amm_pool.key(), false),
-        AccountMeta::new_readonly(amm_authority.key(), false),
-        AccountMeta::new(amm_open_orders.key(), false),
-        AccountMeta::new(amm_lp_mint.key(), false),
-        AccountMeta::new_readonly(amm_coin_mint.key(), false),
-        AccountMeta::new_readonly(amm_pc_mint.key(), false),
-        AccountMeta::new(amm_coin_vault.key(), false),
-        AccountMeta::new(amm_pc_vault.key(), false),
-        AccountMeta::new(amm_target_orders.key(), false),
-        AccountMeta::new_readonly(amm_config.key(), false),
-        AccountMeta::new(create_fee_destination.key(), false),
-        // market
-        AccountMeta::new_readonly(market_program.key(), false),
-        AccountMeta::new_readonly(market.key(), false),
-        // user wallet
-        AccountMeta::new(user_wallet.key(), true),
-        AccountMeta::new(user_token_coin.key(), false),
-        AccountMeta::new(user_token_pc.key(), false),
-        AccountMeta::new(user_token_lp.key(), false),
     ];
-
     let mut bytes_data = vec![];
-    bytes_data.extend([1]);
-    bytes_data.extend(nonce.to_le_bytes());
+    bytes_data.extend([175, 175, 109, 31, 13, 152, 155, 237]);
+    bytes_data.extend(init_0_amount.to_le_bytes());
+    bytes_data.extend(init_1_amount.to_le_bytes());
     bytes_data.extend(open_time.to_le_bytes());
-    bytes_data.extend(init_pc_amount.to_le_bytes());
-    bytes_data.extend(init_coin_amount.to_le_bytes());
 
     let account_infos: Vec<AccountInfo> = vec![
+        user_wallet,
+        amm_config,
+        amm_authority,
+        amm_pool,
+        token_0_mint,
+        token_1_mint,
+        amm_lp_mint,
+        user_token_0_mint,
+        user_token_1_mint,
+        user_token_lp,
+        token_0_vault,
+        token_1_vault,
+        create_fee_destination,
+        observation_state,
         token_program,
+        token_0_program,
+        token_1_program,
         associated_token_program,
         system_program,
         rent,
-        amm_pool,
-        amm_authority,
-        amm_open_orders,
-        amm_lp_mint,
-        amm_coin_mint,
-        amm_pc_mint,
-        amm_coin_vault,
-        amm_pc_vault,
-        amm_target_orders,
-        amm_config,
-        create_fee_destination,
-        market_program,
-        market,
-        user_wallet,
-        user_token_coin,
-        user_token_pc,
-        user_token_lp,
     ];
 
     let _invoke = solana_program::program::invoke(
