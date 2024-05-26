@@ -7,7 +7,7 @@ Features:
 2. Soulbound each presale purchase to a NFT
 3. If presale conditions are not met, users can withdraw their funds.
 
-Demo App:
+Demo:
 
 [MemeStarter](https://www.memestarter.app)
    
